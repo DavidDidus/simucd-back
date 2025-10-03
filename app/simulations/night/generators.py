@@ -1,13 +1,7 @@
 # app/simulations/night_shift/generators.py
-from .utils import RI_rng
+from .utils import RI_rng , sample_int_or_range_rng
 
 def _emitir_palletes_por_cajas(rest_cajas, rango, mixto, rng, prefijo_id):
-    """
-    Parte las 'rest_cajas' en pallets con tamaños ~ Uniforme(rango).
-    Para respetar exactamente las cajas, el último pallet toma el remanente.
-    Si el remanente queda fuera del rango, se permite (se avisa en print).
-    Retorna (lista_pallets, total_pallets_generados)
-    """
     pallets = []
     cont = 0
     a, b = rango
@@ -25,12 +19,6 @@ def _emitir_palletes_por_cajas(rest_cajas, rango, mixto, rng, prefijo_id):
     return pallets, cont
 
 def generar_pallets_desde_cajas_dobles(total_cajas_facturadas: int, cajas_para_pick: int, cfg, rng):
-    """
-    Recibe CAJAS (no pallets):
-      - cajas_para_pick -> pallets MIXTOS (pasan por PICK)
-      - (total_cajas_facturadas - cajas_para_pick) -> pallets COMPLETOS (no pasan por PICK)
-    Suma total de 'cajas' en los pallets generados == total_cajas_facturadas (exacto).
-    """
     total = max(int(total_cajas_facturadas), 0)
     pick = max(int(cajas_para_pick), 0)
     if pick > total:
@@ -66,12 +54,7 @@ def generar_pallets_desde_cajas_dobles(total_cajas_facturadas: int, cajas_para_p
     return pallets, {"pallets_mixtos": n_mix, "pallets_completos": n_comp}
 
 def construir_plan_desde_pallets(pallets, cfg, rng):
-    """
-    Reparte la lista de pallets pre-fusión en vueltas:
-    - Por camión: target aleatorio en [15,22] (o el int si fuera fijo).
-    - Último camión de la última vuelta puede quedar con menos si no alcanza.
-    """
-    from .utils import sample_int_or_range_rng
+    
     
     cam = cfg["camiones"]
     plan = []

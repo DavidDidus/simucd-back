@@ -27,7 +27,6 @@ class Centro:
         self.grua_ops = []         # logs de cada uso de grúa
 
     def _usar_grua(self, priority, dur, label, vuelta, id_cam):
-        """Uso de grúa única (capacidad cfg['cap_gruero']) + log de espera y servicio."""
         t_req = self.env.now
         with self.grua.request(priority=priority) as g:
             yield g
@@ -41,19 +40,14 @@ class Centro:
         })
 
     def _rebalanceo_post_pick_v1(self):
-        """Cuando termina el pick de la vuelta 1, bajar prioridad de acomodo_v1."""
         try:
             ev = self.pick_gate[1]['event']
         except KeyError:
             return  # no hay vuelta 1 (caso raro)
         yield ev
         self.prio_acomodo_v1 = PRIO_R2PLUS
-        print(f"[Rebalance] t={self.env.now:.2f} fin PICK V1 → acomodo_v1 ahora PRIO_R2PLUS")
 
     def procesa_camion_vuelta(self, vuelta, id_cam, pallets_asignados):
-        """
-        REVERTIR a secuencial optimizado - El paralelismo empeora el rendimiento
-        """
         cfg = self.cfg
 
         # 1) Esperar gate si aplica
@@ -82,16 +76,16 @@ class Centro:
                 self.pick_gate[vuelta]['done_time'] = self.env.now
                 self.pick_gate[vuelta]['event'].succeed()
 
-        # ==================== PROCESAMIENTO SECUENCIAL OPTIMIZADO ====================
+        # ==================== PROCESAMIENTO SECUENCIAL ====================
         corregidos = 0
         fusionados = 0
 
         if vuelta == 1:
-            # *** SECUENCIAL OPTIMIZADO CON FUSIÓN POST-CHEQUEO ***
-            corregidos, fusionados = yield from self._procesar_vuelta_1_secuencial_optimizado(vuelta, id_cam, pre_asignados)
+            # *** SECUENCIAL CON FUSIÓN POST-CHEQUEO ***
+            corregidos, fusionados = yield from self._procesar_vuelta_1_secuencial(vuelta, id_cam, pre_asignados)
         else:
             # Vueltas 2+ también secuenciales
-            yield from self._procesar_staging_secuencial_optimizado(vuelta, id_cam, pre_asignados)
+            yield from self._procesar_staging_secuencial(vuelta, id_cam, pre_asignados)
 
         # Log por camión
         t1 = self.env.now
@@ -114,7 +108,7 @@ class Centro:
             "modo": ("carga" if vuelta == 1 else "staging")
         })
 
-    def _procesar_vuelta_1_secuencial_optimizado(self, vuelta, id_cam, pallets_asignados):
+    def _procesar_vuelta_1_secuencial(self, vuelta, id_cam, pallets_asignados):
         """
         Vuelta 1 SECUENCIAL pero con flujo correcto:
         1. Despacho+Acomodo de TODOS
@@ -128,11 +122,7 @@ class Centro:
         with self.patio_camiones.request() as slot:
             yield slot
             
-            print(f"[SecuencialOpt] V{vuelta} C{id_cam}: Procesando {len(pallets_asignados)} pallets")
-            
             # ==================== FASE 1: DESPACHO + ACOMODO (TODOS) ====================
-            print(f"[SecuencialOpt] V{vuelta} C{id_cam}: FASE 1 - Despacho + Acomodo")
-            
             primera = True
             for i, pal in enumerate(pallets_asignados):
                 # Despacho (solo completos)
@@ -148,8 +138,6 @@ class Centro:
                 primera = False
             
             # ==================== FASE 2: CHEQUEO (TODOS) ====================
-            print(f"[SecuencialOpt] V{vuelta} C{id_cam}: FASE 2 - Chequeo")
-            
             pallets_con_defecto = []
             for i, pal in enumerate(pallets_asignados):
                 with self.cheq.request() as c:
@@ -172,11 +160,6 @@ class Centro:
                     yield c
                     yield self.env.timeout(U_rng(self.rng, t_chequeo_range[0], t_chequeo_range[1]))
             
-            print(f"[SecuencialOpt] V{vuelta} C{id_cam}: FASE 2 completada - {corregidos} correcciones")
-            
-            # ==================== FASE 3: FUSIÓN POST-CHEQUEO ====================
-            print(f"[SecuencialOpt] V{vuelta} C{id_cam}: FASE 3 - Fusión")
-            
             pallets_chequeados = pallets_asignados  # Todos ya chequeados
             cap_cam = sample_int_or_range_rng(self.rng, cfg["capacidad_pallets_camion"])
             fusionados = 0
@@ -190,18 +173,13 @@ class Centro:
                     quitar = set(self.rng.sample(idx_mixtos, a_fusionar))
                     pallets_finales = [p for i, p in enumerate(pallets_chequeados) if i not in quitar]
                     fusionados = a_fusionar
-                    print(f"[SecuencialOpt] V{vuelta} C{id_cam}: FUSIÓN {len(pallets_chequeados)} → {len(pallets_finales)} (mixtos fusionados: {fusionados})")
                 else:
                     pallets_finales = pallets_chequeados[:cap_cam]
                     fusionados = len(pallets_chequeados) - cap_cam
-                    print(f"[SecuencialOpt] V{vuelta} C{id_cam}: FUSIÓN {len(pallets_chequeados)} → {len(pallets_finales)} (otros fusionados: {fusionados})")
             else:
                 pallets_finales = pallets_chequeados
-                print(f"[SecuencialOpt] V{vuelta} C{id_cam}: Sin fusión necesaria")
             
             # ==================== FASE 4: CARGA (SOLO FINALES) ====================
-            print(f"[SecuencialOpt] V{vuelta} C{id_cam}: FASE 4 - Carga {len(pallets_finales)} pallets")
-            
             for i, pal in enumerate(pallets_finales):
                 t_carga_range = cfg["t_carga_pallet"]
                 dur_c = U_rng(self.rng, t_carga_range[0], t_carga_range[1])
@@ -217,8 +195,7 @@ class Centro:
         
         return corregidos, fusionados
 
-    def _procesar_staging_secuencial_optimizado(self, vuelta, id_cam, pre_asignados):
-        """Vueltas 2+ secuencial simple"""
+    def _procesar_staging_secuencial(self, vuelta, id_cam, pre_asignados):
         cfg = self.cfg
         primera = True
         

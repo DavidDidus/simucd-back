@@ -3,7 +3,6 @@ from collections import defaultdict
 from .utils import hhmm_dias
 
 def _resumir_grua(centro, cfg, total_fin):
-    """Tu función exacta de resumen de grúa"""
     ops = centro.grua_ops
     by_vuelta = defaultdict(list)
     by_label = defaultdict(list)
@@ -48,7 +47,6 @@ def _resumir_grua(centro, cfg, total_fin):
     return {"overall": overall, "por_vuelta": por_vuelta, "por_label": por_label}
 
 def calcular_resumen_vueltas(plan, centro, cfg):
-    """Calcula el resumen por vuelta tal como lo tienes"""
     resumen_por_vuelta = []
     shift_end = cfg["shift_end_min"]
 
@@ -61,7 +59,6 @@ def calcular_resumen_vueltas(plan, centro, cfg):
         fin_oper_min = max(e["fin_min"]    for e in items)              # fin operativo (incluye acomodo/carga)
         pick_fin_min = centro.pick_gate[vuelta]["done_time"]            # fin de PICK (gate liberado)
 
-        # Fin "oficial": fin de PICK (vuelta 1 y vueltas >=2)
         fin_resumen_min = pick_fin_min if pick_fin_min is not None else fin_oper_min
 
         resumen_por_vuelta.append({
@@ -73,12 +70,10 @@ def calcular_resumen_vueltas(plan, centro, cfg):
             "duracion_vuelta_min": fin_resumen_min - inicio_min,
             "overrun_min": max(0, fin_resumen_min - shift_end),
 
-            # Marcas adicionales (para auditoría)
             "pick_fin_hhmm": hhmm_dias(cfg["shift_start_min"] + pick_fin_min) if pick_fin_min is not None else None,
             "fin_operativo_hhmm": hhmm_dias(cfg["shift_start_min"] + fin_oper_min),
             "duracion_operativa_min": fin_oper_min - inicio_min,
 
-            # Métricas (en pallets/cajas)
             "pre_quemados_pallets": sum(e["pre_asignados"] for e in items),
             "pre_quemados_cajas":   sum(e["cajas_pre"]      for e in items),
             "post_cargados_pallets": sum(e["post_cargados"] for e in items),  # solo v1
@@ -89,7 +84,6 @@ def calcular_resumen_vueltas(plan, centro, cfg):
     return resumen_por_vuelta
 
 def calcular_ice_mixto(centro, cfg):
-    """Calcula ICE solo para mixtas como tienes"""
     pickers = cfg.get("cap_picker", 0)
     horas_eff = cfg.get("horas_efectivas_ice", 7.1)
     total_cajas_pickeadas_mixtas = sum(e.get("cajas_pick_mixto", 0) for e in centro.eventos)

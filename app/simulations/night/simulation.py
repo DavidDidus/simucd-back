@@ -6,32 +6,27 @@ from .resources import Centro
 from .metrics import _resumir_grua, calcular_resumen_vueltas, calcular_ice_mixto
 
 def simular_turno_prioridad_rng(total_cajas_facturadas, cajas_para_pick, cfg, seed=None):
-    """Tu función principal exacta"""
     rng = make_rng(seed)                 # RNG local. seed=None => diferente cada vez.
     env = simpy.Environment()
 
-    # Pallets generados desde CAJAS
     pallets, resumen_pallets = generar_pallets_desde_cajas_dobles(total_cajas_facturadas, cajas_para_pick, cfg, rng)
     plan = construir_plan_desde_pallets(pallets, cfg, rng)  # [(vuelta, [lista_pallets_camion,...])]
 
-    # Gating de pick por vuelta
     pick_gate = {}
     for (vuelta, asign) in plan:
         pick_gate[vuelta] = {"target": len(asign), "count": 0, "event": env.event(), "done_time": None}
-    # vuelta 0 (ficticia) liberada para que R1 pueda empezar de inmediato
+
     pick_gate[0] = {"target": 0, "count": 0, "event": env.event(), "done_time": 0}
     pick_gate[0]["event"].succeed()
 
     centro = Centro(env, cfg, pick_gate, rng)
 
-    # Lanzar procesos (cada camión en su vuelta)
     for (vuelta, asignaciones) in plan:
         for cam_id, pallets_cam in enumerate(asignaciones, start=1):
             env.process(centro.procesa_camion_vuelta(vuelta, cam_id, pallets_cam))
 
     env.run()
 
-    # ---- Cálculos finales ----
     resumen_por_vuelta = calcular_resumen_vueltas(plan, centro, cfg)
     total_fin = max(e["fin_min"] for e in centro.eventos) if centro.eventos else 0
     grua_metrics = _resumir_grua(centro, cfg, total_fin)
