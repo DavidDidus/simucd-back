@@ -14,21 +14,19 @@ DEFAULT_CONFIG = {
     "capacidad_pallets_camion": (10,16),  # capacidad real por camión en 1ª vuelta (post-fusión, solo mixtos)
 
     # Calidad (chequeo solo en 1ª vuelta)
-    "p_defecto": 0.02,
+    "p_defecto": 0.01,
 
     # Tiempos (min)
-    "t_prep_mixto": (6,10),
-    "t_desp_completo": (1,2.5),
-
-    "t_acomodo_primera": (0.5,1.5),  # 1er pallet del camión
-    "t_acomodo_otra": (0.5,1,5),         # siguientes pallets
-
-    # SOLO 1ª vuelta:
-    "t_chequeo_pallet": (1,3),
-    "t_correccion": (2,3),
-    "t_carga_pallet": (1.0,2.0),
-    "t_ajuste_capacidad": (3,5),
-    "t_mover_camion": (2,4),
+    "t_prep_mixto": (4, 7),           # Reducido de (6, 10)
+    "t_desp_completo": (1, 2),        # Reducido  
+    "t_acomodo_primera": (0.6, 1.2),  # Reducido
+    "t_acomodo_otra": (0.4, 0.8),     # Reducido
+    "t_chequeo_pallet": (0.4, 1),     # Reducido
+    "t_correccion": (1.0, 2.0),       # Reducido
+    "t_carga_pallet": (0.8, 1.5),     # Reducido
+    "t_ajuste_capacidad": (1.5, 3.0), # Reducido
+    "t_mover_camion": (1.0, 2.0),     # Reducido
+    
 
     # Recursos
     "cap_picker": 14,

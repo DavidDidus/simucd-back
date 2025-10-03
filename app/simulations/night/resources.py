@@ -52,23 +52,20 @@ class Centro:
 
     def procesa_camion_vuelta(self, vuelta, id_cam, pallets_asignados):
         """
-        Tu lógica exacta:
-        Gating de pick: Vuelta k+1 comienza PICK cuando vuelta k terminó su PICK.
-        Vuelta 1: PICK (sólo mixtos) → FUSIÓN (post-pick) → despacho completos + acomodo + chequeo + carga.
-        Vueltas ≥2: PICK (sólo mixtos) + staging (acomodo_v2 / despacho_completo_v2). Sin chequeo ni carga.
+        REVERTIR a secuencial optimizado - El paralelismo empeora el rendimiento
         """
         cfg = self.cfg
 
-        # 1) Esperar gate si aplica (vuelta>1 espera fin del PICK de la anterior)
+        # 1) Esperar gate si aplica
         if vuelta > 1:
             yield self.pick_gate[vuelta - 1]['event']
 
-        # 2) Marca de inicio (después del gate)
+        # 2) Marca de inicio
         t0 = self.env.now
 
-        # -------------------- FASE A: PICK (SÓLO MIXTOS) --------------------
+        # ==================== FASE A: PICK (SÓLO MIXTOS) ====================
         pre_asignados = pallets_asignados
-        pick_list = [p for p in pre_asignados if p["mixto"]]  # SOLO pallets para pickeo
+        pick_list = [p for p in pre_asignados if p["mixto"]]
 
         for pal in pick_list:
             with self.pick.request() as r:
@@ -78,114 +75,160 @@ class Centro:
                 t_prep_range = cfg["t_prep_mixto"]
                 yield self.env.timeout(U_rng(self.rng, t_prep_range[0], t_prep_range[1]))
 
-        # 3) Señal de fin de PICK para esta vuelta (gating hacia la siguiente vuelta)
+        # 3) Señal de fin de PICK
         self.pick_gate[vuelta]['count'] += 1
         if self.pick_gate[vuelta]['count'] >= self.pick_gate[vuelta]['target']:
             if not self.pick_gate[vuelta]['event'].triggered:
                 self.pick_gate[vuelta]['done_time'] = self.env.now
                 self.pick_gate[vuelta]['event'].succeed()
 
-        # -------------------- FASE B: FUSIÓN (post-pick, SOLO V1) --------------------
-        post_lista = pre_asignados
-        fusionados = 0
-        if vuelta == 1:
-            cap_cam = sample_int_or_range_rng(self.rng, cfg["capacidad_pallets_camion"])  # 10–16 por camión
-            exceso = max(0, len(pre_asignados) - cap_cam)
-            if exceso > 0:
-                idx_mixtos = [i for i, p in enumerate(pre_asignados) if p["mixto"]]
-                a_fusionar = min(exceso, len(idx_mixtos))
-                if a_fusionar > 0:
-                    quitar = set(self.rng.sample(idx_mixtos, a_fusionar))
-                    post_lista = [p for i, p in enumerate(pre_asignados) if i not in quitar]
-                    fusionados = a_fusionar
-                    print(f"[Debug] V{vuelta} C{id_cam}: post-pick FUSION pre {len(pre_asignados)} -> post {len(post_lista)} (fusionados {fusionados})")
-                else:
-                    post_lista = pre_asignados[:cap_cam]
-                    fusionados = 0
-                    print(f"[Debug] V{vuelta} C{id_cam}: post-pick FUSION pre {len(pre_asignados)} -> post {len(post_lista)} (no mixtos para fusionar)")
-
-        # -------------------- FASE C: Post-pick (operaciones con grúa) --------------------
+        # ==================== PROCESAMIENTO SECUENCIAL OPTIMIZADO ====================
         corregidos = 0
-        primera = True
+        fusionados = 0
 
         if vuelta == 1:
-            # 1ª vuelta: ocupar patio y completar despacho de completos + acomodo + chequeo + carga
-            with self.patio_camiones.request() as slot:
-                yield slot
-
-                for pal in post_lista:
-                    # Para COMPLETOS en V1: traer el pallet completo (despacho) con grúa
-                    if not pal["mixto"]:
-                        print(f"[Debug] V{vuelta} C{id_cam}: despacho COMPLETO {pal.get('id','')}")
-                        t_desp_range = cfg["t_desp_completo"]
-                        dur_dc = U_rng(self.rng, t_desp_range[0], t_desp_range[1])
-                        yield from self._usar_grua(PRIO_R1, dur_dc, "pick_completo", vuelta, id_cam)
-
-                    # Acomodo (grúa)
-                    t_acomodo_range = cfg["t_acomodo_primera"] if primera else cfg["t_acomodo_otra"]
-                    dur_a = U_rng(self.rng, t_acomodo_range[0], t_acomodo_range[1])
-                    yield from self._usar_grua(self.prio_acomodo_v1, dur_a, "acomodo_v1", vuelta, id_cam)
-                    primera = False
-
-                    # Chequeo (solo vuelta 1)
-                    with self.cheq.request() as c:
-                        yield c
-                        t_chequeo_range = cfg["t_chequeo_pallet"]
-                        yield self.env.timeout(U_rng(self.rng, t_chequeo_range[0], t_chequeo_range[1]))
-                        if self.rng.random() < cfg["p_defecto"]:
-                            corregidos += 1
-                            print(f"[Debug] V{vuelta} C{id_cam}: CORRECCION {pal.get('id','')}")
-                            t_corr_range = cfg["t_correccion"]
-                            dur_corr = U_rng(self.rng, t_corr_range[0], t_corr_range[1])
-                            yield from self._usar_grua(PRIO_R1, dur_corr, "correccion", vuelta, id_cam)
-                            yield self.env.timeout(U_rng(self.rng, t_chequeo_range[0], t_chequeo_range[1]))
-
-                    # Carga al camión (grúa)
-                    print(f"[Debug] V{vuelta} C{id_cam}: carga {pal.get('id','')}")
-                    t_carga_range = cfg["t_carga_pallet"]
-                    dur_c = U_rng(self.rng, t_carga_range[0], t_carga_range[1])
-                    yield from self._usar_grua(PRIO_R1, dur_c, "carga", vuelta, id_cam)
-
-                # Cierre por camión
-                with self.parr.request() as p:
-                    yield p
-                    t_ajuste_range = cfg["t_ajuste_capacidad"]
-                    yield self.env.timeout(U_rng(self.rng, t_ajuste_range[0], t_ajuste_range[1]))
-                with self.movi.request() as m:
-                    yield m
-                    t_mover_range = cfg["t_mover_camion"]
-                    yield self.env.timeout(U_rng(self.rng, t_mover_range[0], t_mover_range[1]))
-
+            # *** SECUENCIAL OPTIMIZADO CON FUSIÓN POST-CHEQUEO ***
+            corregidos, fusionados = yield from self._procesar_vuelta_1_secuencial_optimizado(vuelta, id_cam, pre_asignados)
         else:
-            # Vueltas ≥2: SOLO staging. Mixto: acomodo_v2; Completo: despacho_completo_v2
-            for pal in pre_asignados:
-                if pal["mixto"]:
-                    print(f"[Debug] V{vuelta} C{id_cam}: staging MIXTO {pal.get('id','')}")
-                    t_acomodo_range = cfg["t_acomodo_primera"] if primera else cfg["t_acomodo_otra"]
-                    dur_a = U_rng(self.rng, t_acomodo_range[0], t_acomodo_range[1])
-                    yield from self._usar_grua(PRIO_R2PLUS, dur_a, "acomodo_v2", vuelta, id_cam)
-                    primera = False
-                else:
-                    print(f"[Debug] V{vuelta} C{id_cam}: staging COMPLETO {pal.get('id','')}")
-                    t_desp_range = cfg["t_desp_completo"]
-                    dur_dc = U_rng(self.rng, t_desp_range[0], t_desp_range[1])
-                    yield from self._usar_grua(PRIO_R2PLUS, dur_dc, "despacho_completo_v2", vuelta, id_cam)
+            # Vueltas 2+ también secuenciales
+            yield from self._procesar_staging_secuencial_optimizado(vuelta, id_cam, pre_asignados)
 
-        # 7) Log por camión (incluye cajas pickeadas MIXTAS para ICE)
+        # Log por camión
         t1 = self.env.now
         cajas_pick_mixto_camion = sum(p["cajas"] for p in pre_asignados if p["mixto"])
+        post_cargados = len(pre_asignados) - fusionados if vuelta == 1 else len(pre_asignados)
+        
         self.eventos.append({
             "vuelta": vuelta,
             "camion": id_cam,
             "pre_asignados": len(pre_asignados),
-            "post_cargados": (len(post_lista) if vuelta == 1 else 0),
-            "fusionados": (fusionados if vuelta == 1 else 0),
-            "corregidos": (corregidos if vuelta == 1 else 0),
+            "post_cargados": post_cargados,
+            "fusionados": fusionados,
+            "corregidos": corregidos,
             "cajas_pre": sum(p["cajas"] for p in pre_asignados),
-            "cajas_pick_mixto": cajas_pick_mixto_camion,  # SOLO mixtas (para ICE)
+            "cajas_pick_mixto": cajas_pick_mixto_camion,
             "inicio_min": t0, "fin_min": t1,
             "inicio_hhmm": hhmm_dias(cfg["shift_start_min"] + t0),
             "fin_hhmm": hhmm_dias(cfg["shift_start_min"] + t1),
             "tiempo_min": t1 - t0,
             "modo": ("carga" if vuelta == 1 else "staging")
         })
+
+    def _procesar_vuelta_1_secuencial_optimizado(self, vuelta, id_cam, pallets_asignados):
+        """
+        Vuelta 1 SECUENCIAL pero con flujo correcto:
+        1. Despacho+Acomodo de TODOS
+        2. Chequeo de TODOS  
+        3. Fusión basada en resultados
+        4. Carga solo de finales
+        """
+        cfg = self.cfg
+        corregidos = 0
+        
+        with self.patio_camiones.request() as slot:
+            yield slot
+            
+            print(f"[SecuencialOpt] V{vuelta} C{id_cam}: Procesando {len(pallets_asignados)} pallets")
+            
+            # ==================== FASE 1: DESPACHO + ACOMODO (TODOS) ====================
+            print(f"[SecuencialOpt] V{vuelta} C{id_cam}: FASE 1 - Despacho + Acomodo")
+            
+            primera = True
+            for i, pal in enumerate(pallets_asignados):
+                # Despacho (solo completos)
+                if not pal["mixto"]:
+                    t_desp_range = cfg["t_desp_completo"]
+                    dur_dc = U_rng(self.rng, t_desp_range[0], t_desp_range[1])
+                    yield from self._usar_grua(PRIO_R1, dur_dc, "despacho_completo", vuelta, id_cam)
+                
+                # Acomodo (todos)
+                t_acomodo_range = cfg["t_acomodo_primera"] if primera else cfg["t_acomodo_otra"]
+                dur_a = U_rng(self.rng, t_acomodo_range[0], t_acomodo_range[1])
+                yield from self._usar_grua(self.prio_acomodo_v1, dur_a, "acomodo_v1", vuelta, id_cam)
+                primera = False
+            
+            # ==================== FASE 2: CHEQUEO (TODOS) ====================
+            print(f"[SecuencialOpt] V{vuelta} C{id_cam}: FASE 2 - Chequeo")
+            
+            pallets_con_defecto = []
+            for i, pal in enumerate(pallets_asignados):
+                with self.cheq.request() as c:
+                    yield c
+                    t_chequeo_range = cfg["t_chequeo_pallet"]
+                    yield self.env.timeout(U_rng(self.rng, t_chequeo_range[0], t_chequeo_range[1]))
+                    
+                    if self.rng.random() < cfg["p_defecto"]:
+                        pallets_con_defecto.append((i, pal))
+            
+            # Correcciones
+            corregidos = len(pallets_con_defecto)
+            for i, pal in pallets_con_defecto:
+                t_corr_range = cfg["t_correccion"]
+                dur_corr = U_rng(self.rng, t_corr_range[0], t_corr_range[1])
+                yield from self._usar_grua(PRIO_R1, dur_corr, "correccion", vuelta, id_cam)
+                
+                # Re-chequeo
+                with self.cheq.request() as c:
+                    yield c
+                    yield self.env.timeout(U_rng(self.rng, t_chequeo_range[0], t_chequeo_range[1]))
+            
+            print(f"[SecuencialOpt] V{vuelta} C{id_cam}: FASE 2 completada - {corregidos} correcciones")
+            
+            # ==================== FASE 3: FUSIÓN POST-CHEQUEO ====================
+            print(f"[SecuencialOpt] V{vuelta} C{id_cam}: FASE 3 - Fusión")
+            
+            pallets_chequeados = pallets_asignados  # Todos ya chequeados
+            cap_cam = sample_int_or_range_rng(self.rng, cfg["capacidad_pallets_camion"])
+            fusionados = 0
+            
+            if len(pallets_chequeados) > cap_cam:
+                exceso = len(pallets_chequeados) - cap_cam
+                idx_mixtos = [i for i, p in enumerate(pallets_chequeados) if p["mixto"]]
+                a_fusionar = min(exceso, len(idx_mixtos))
+                
+                if a_fusionar > 0:
+                    quitar = set(self.rng.sample(idx_mixtos, a_fusionar))
+                    pallets_finales = [p for i, p in enumerate(pallets_chequeados) if i not in quitar]
+                    fusionados = a_fusionar
+                    print(f"[SecuencialOpt] V{vuelta} C{id_cam}: FUSIÓN {len(pallets_chequeados)} → {len(pallets_finales)} (mixtos fusionados: {fusionados})")
+                else:
+                    pallets_finales = pallets_chequeados[:cap_cam]
+                    fusionados = len(pallets_chequeados) - cap_cam
+                    print(f"[SecuencialOpt] V{vuelta} C{id_cam}: FUSIÓN {len(pallets_chequeados)} → {len(pallets_finales)} (otros fusionados: {fusionados})")
+            else:
+                pallets_finales = pallets_chequeados
+                print(f"[SecuencialOpt] V{vuelta} C{id_cam}: Sin fusión necesaria")
+            
+            # ==================== FASE 4: CARGA (SOLO FINALES) ====================
+            print(f"[SecuencialOpt] V{vuelta} C{id_cam}: FASE 4 - Carga {len(pallets_finales)} pallets")
+            
+            for i, pal in enumerate(pallets_finales):
+                t_carga_range = cfg["t_carga_pallet"]
+                dur_c = U_rng(self.rng, t_carga_range[0], t_carga_range[1])
+                yield from self._usar_grua(PRIO_R1, dur_c, "carga", vuelta, id_cam)
+            
+            # Cierre
+            with self.parr.request() as p:
+                yield p
+                yield self.env.timeout(U_rng(self.rng, cfg["t_ajuste_capacidad"][0], cfg["t_ajuste_capacidad"][1]))
+            with self.movi.request() as m:
+                yield m
+                yield self.env.timeout(U_rng(self.rng, cfg["t_mover_camion"][0], cfg["t_mover_camion"][1]))
+        
+        return corregidos, fusionados
+
+    def _procesar_staging_secuencial_optimizado(self, vuelta, id_cam, pre_asignados):
+        """Vueltas 2+ secuencial simple"""
+        cfg = self.cfg
+        primera = True
+        
+        for pal in pre_asignados:
+            if pal["mixto"]:
+                t_acomodo_range = cfg["t_acomodo_primera"] if primera else cfg["t_acomodo_otra"]
+                dur_a = U_rng(self.rng, t_acomodo_range[0], t_acomodo_range[1])
+                yield from self._usar_grua(PRIO_R2PLUS, dur_a, "acomodo_v2", vuelta, id_cam)
+                primera = False
+            else:
+                t_desp_range = cfg["t_desp_completo"]
+                dur_dc = U_rng(self.rng, t_desp_range[0], t_desp_range[1])
+                yield from self._usar_grua(PRIO_R2PLUS, dur_dc, "despacho_completo_v2", vuelta, id_cam)

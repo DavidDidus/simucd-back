@@ -123,133 +123,134 @@ def main():
         else:
             print(f"      ✅ Sin overrun")
         
+        
         # Métricas específicas por tipo
-        if v_num == 1:  # Vuelta 1 - CARGA
-            print(f"   Métricas de carga:")
-            print(f"      Pallets cargados final: {vuelta['post_cargados_pallets']}")
-            print(f"      Pallets fusionados: {vuelta['fusionados']}")
-            if vuelta['pre_quemados_pallets'] > 0:
-                eficiencia = (vuelta['post_cargados_pallets'] / vuelta['pre_quemados_pallets']) * 100
-                print(f"      Eficiencia de carga: {eficiencia:.1f}%")
-                if vuelta['fusionados'] > 0:
-                    print(f"      Tasa de fusión: {(vuelta['fusionados'] / vuelta['pre_quemados_pallets'] * 100):.1f}%")
-        else:  # Vueltas 2+ - STAGING
-            print(f"   Modo staging - Solo preparación para despacho")
-    
+        #if v_num == 1:  # Vuelta 1 - CARGA
+        #    print(f"   Métricas de carga:")
+        #    print(f"      Pallets cargados final: {vuelta['post_cargados_pallets']}")
+        #    print(f"      Pallets fusionados: {vuelta['fusionados']}")
+        #    if vuelta['pre_quemados_pallets'] > 0:
+        #        eficiencia = (vuelta['post_cargados_pallets'] / vuelta['pre_quemados_pallets']) * 100
+        #        print(f"      Eficiencia de carga: {eficiencia:.1f}%")
+        #        if vuelta['fusionados'] > 0:
+        #            print(f"      Tasa de fusión: {(vuelta['fusionados'] / vuelta['pre_quemados_pallets'] * 100):.1f}%")
+        #else:  # Vueltas 2+ - STAGING
+        #    print(f"   Modo staging - Solo preparación para despacho")
+        
     # 4. ICE (ÍNDICE DE CAPACIDAD EFECTIVA)
-    print(f"\n📈 ICE - ÍNDICE DE CAPACIDAD EFECTIVA (MIXTAS)")
-    print(f"{'─'*60}")
-    ice = resultado['ice_mixto']
-    print(f"Cajas mixtas pickeadas: {ice['total_cajas_pickeadas_mixtas']:,}")
-    print(f"Pickers disponibles: {ice['pickers']}")
-    print(f"Horas efectivas configuradas: {ice['horas_efectivas']}")
+    #print(f"\n📈 ICE - ÍNDICE DE CAPACIDAD EFECTIVA (MIXTAS)")
+    #print(f"{'─'*60}")
+    #ice = resultado['ice_mixto']
+    #print(f"Cajas mixtas pickeadas: {ice['total_cajas_pickeadas_mixtas']:,}")
+    #print(f"Pickers disponibles: {ice['pickers']}")
+    #print(f"Horas efectivas configuradas: {ice['horas_efectivas']}")
     
-    if ice['valor']:
-        print(f"ICE CALCULADO: {ice['valor']:.2f} cajas/picker/hora")
+   # if ice['valor']:
+       #print(f"ICE CALCULADO: {ice['valor']:.2f} cajas/picker/hora")
         
         # Interpretación del ICE
-        if ice['valor'] < 50:
-            print(f"   📉 ICE BAJO - Posible sub-utilización de pickers")
-        elif ice['valor'] < 80:
-            print(f"   📊 ICE NORMAL - Operación dentro de parámetros estándar")
-        elif ice['valor'] < 120:
-            print(f"   📈 ICE ALTO - Alta eficiencia de picking")
-        else:
-            print(f"   🚀 ICE MUY ALTO - Eficiencia excepcional")
-    else:
-        print(f"ICE: No calculable")
+        #if ice['valor'] < 50:
+        #    print(f"   📉 ICE BAJO - Posible sub-utilización de pickers")
+        #elif ice['valor'] < 80:
+        #    print(f"   📊 ICE NORMAL - Operación dentro de parámetros estándar")
+        #elif ice['valor'] < 120:
+        #    print(f"   📈 ICE ALTO - Alta eficiencia de picking")
+        #else:
+        #    print(f"   🚀 ICE MUY ALTO - Eficiencia excepcional")
+    #else:
+        #print(f"ICE: No calculable")
     
     # 5. ANÁLISIS COMPLETO DE GRÚA
-    print(f"\n🏗️  ANÁLISIS COMPLETO DE GRÚA")
-    print(f"{'─'*60}")
+    #print(f"\n🏗️  ANÁLISIS COMPLETO DE GRÚA")
+    #print(f"{'─'*60}")
     
-    grua = resultado['grua']
-    overall = grua['overall']
+    #grua = resultado['grua']
+    #overall = grua['overall']
     
-    print(f"📊 MÉTRICAS GENERALES:")
-    print(f"   Operaciones totales: {overall['ops']}")
-    print(f"   Tiempo total ocupado: {overall['total_hold_min']:.1f} min ({formato_tiempo(overall['total_hold_min'])})")
-    print(f"   Tiempo total de espera: {overall['total_wait_min']:.1f} min ({formato_tiempo(overall['total_wait_min'])})")
-    print(f"   Espera promedio por operación: {overall['mean_wait_min']:.2f} min")
-    print(f"   UTILIZACIÓN: {overall['utilizacion_prom']:.1%}")
+    #print(f"📊 MÉTRICAS GENERALES:")
+    #print(f"   Operaciones totales: {overall['ops']}")
+    #print(f"   Tiempo total ocupado: {overall['total_hold_min']:.1f} min ({formato_tiempo(overall['total_hold_min'])})")
+    #print(f"   Tiempo total de espera: {overall['total_wait_min']:.1f} min ({formato_tiempo(overall['total_wait_min'])})")
+    #print(f"   Espera promedio por operación: {overall['mean_wait_min']:.2f} min")
+    #print(f"   UTILIZACIÓN: {overall['utilizacion_prom']:.1%}")
     
     # Interpretación de utilización
-    util = overall['utilizacion_prom']
-    if util < 0.6:
-        print(f"      📉 Utilización baja - Capacidad de grúa sobrada")
-    elif util < 0.8:
-        print(f"      📊 Utilización normal - Operación eficiente")
-    elif util < 0.9:
-        print(f"      📈 Utilización alta - Cerca del límite de capacidad")
-    else:
-        print(f"      🚨 UTILIZACIÓN CRÍTICA - Posible cuello de botella")
+    #util = overall['utilizacion_prom']
+    #if util < 0.6:
+    #    print(f"      📉 Utilización baja - Capacidad de grúa sobrada")
+    #elif util < 0.8:
+    #    print(f"      📊 Utilización normal - Operación eficiente")
+    #elif util < 0.9:
+    #    print(f"      📈 Utilización alta - Cerca del límite de capacidad")
+    #else:
+    #    print(f"      🚨 UTILIZACIÓN CRÍTICA - Posible cuello de botella")
     
     # Análisis por vuelta
-    print(f"\n📊 GRÚA POR VUELTA:")
-    for v in grua['por_vuelta']:
-        print(f"   Vuelta {v['vuelta']}:")
-        print(f"      Operaciones: {v['ops']}")
-        print(f"      Espera promedio: {v['mean_wait_min']:.2f} min")
-        print(f"      Espera máxima: {v['max_wait_min']:.2f} min")
-        print(f"      Tiempo ocupado: {v['total_hold_min']:.1f} min")
+    #print(f"\n📊 GRÚA POR VUELTA:")
+    #for v in grua['por_vuelta']:
+    #    print(f"   Vuelta {v['vuelta']}:")
+    #    print(f"      Operaciones: {v['ops']}")
+    #    print(f"      Espera promedio: {v['mean_wait_min']:.2f} min")
+    #    print(f"      Espera máxima: {v['max_wait_min']:.2f} min")
+    #    print(f"      Tiempo ocupado: {v['total_hold_min']:.1f} min")
     
     # Análisis por tipo de operación
-    print(f"\n📊 GRÚA POR TIPO DE OPERACIÓN:")
-    for label, data in sorted(grua['por_label'].items()):
-        print(f"   {label}:")
-        print(f"      Operaciones: {data['ops']}")
-        print(f"      Espera promedio: {data['mean_wait_min']:.2f} min")
-        print(f"      Tiempo total: {data['total_hold_min']:.1f} min")
-        print(f"      Tiempo promedio por operación: {data['mean_hold_min']:.2f} min")
+    #print(f"\n📊 GRÚA POR TIPO DE OPERACIÓN:")
+    #for label, data in sorted(grua['por_label'].items()):
+    #    print(f"   {label}:")
+    #    print(f"      Operaciones: {data['ops']}")
+    #    print(f"      Espera promedio: {data['mean_wait_min']:.2f} min")
+    #    print(f"      Tiempo total: {data['total_hold_min']:.1f} min")
+    #    print(f"      Tiempo promedio por operación: {data['mean_hold_min']:.2f} min")
     
     # 6. DETECCIÓN DE CUELLOS DE BOTELLA
-    print(f"\n🚧 ANÁLISIS DE CUELLOS DE BOTELLA")
-    print(f"{'─'*60}")
+    #print(f"\n🚧 ANÁLISIS DE CUELLOS DE BOTELLA")
+    #print(f"{'─'*60}")
     
     # Operación con mayor espera
-    if grua['por_label']:
-        max_wait_op = max(grua['por_label'].items(), key=lambda x: x[1]['mean_wait_min'])
-        print(f"Operación con mayor espera: {max_wait_op[0]}")
-        print(f"   Espera promedio: {max_wait_op[1]['mean_wait_min']:.2f} min")
-        if max_wait_op[1]['mean_wait_min'] > 3:
-            print(f"   ⚠️  CUELLO DE BOTELLA DETECTADO")
+    #if grua['por_label']:
+    #    max_wait_op = max(grua['por_label'].items(), key=lambda x: x[1]['mean_wait_min'])
+    #    print(f"Operación con mayor espera: {max_wait_op[0]}")
+    #    print(f"   Espera promedio: {max_wait_op[1]['mean_wait_min']:.2f} min")
+    #    if max_wait_op[1]['mean_wait_min'] > 3:
+    #        print(f"   ⚠️  CUELLO DE BOTELLA DETECTADO")
     
     # Vuelta más lenta
-    vuelta_lenta = max(resultado['resumen_vueltas'], key=lambda x: x['duracion_vuelta_min'])
-    print(f"Vuelta más lenta: V{vuelta_lenta['vuelta']}")
-    print(f"   Duración: {vuelta_lenta['duracion_vuelta_min']:.1f} min")
+    #vuelta_lenta = max(resultado['resumen_vueltas'], key=lambda x: x['duracion_vuelta_min'])
+    #print(f"Vuelta más lenta: V{vuelta_lenta['vuelta']}")
+    #print(f"   Duración: {vuelta_lenta['duracion_vuelta_min']:.1f} min")
     
     # Análisis de overrun por vuelta
-    overruns = [v for v in resultado['resumen_vueltas'] if v['overrun_min'] > 0]
-    if overruns:
-        print(f"Vueltas con overrun: {len(overruns)}/{len(resultado['resumen_vueltas'])}")
-        for v in overruns:
-            print(f"   V{v['vuelta']}: +{v['overrun_min']:.1f} min sobre turno nominal")
-    else:
-        print(f"✅ Todas las vueltas terminaron dentro del turno nominal")
+    #overruns = [v for v in resultado['resumen_vueltas'] if v['overrun_min'] > 0]
+    #if overruns:
+    #    print(f"Vueltas con overrun: {len(overruns)}/{len(resultado['resumen_vueltas'])}")
+    #    for v in overruns:
+    #        print(f"   V{v['vuelta']}: +{v['overrun_min']:.1f} min sobre turno nominal")
+    #else:
+    #    print(f"✅ Todas las vueltas terminaron dentro del turno nominal")
     
     # 7. RESUMEN DE EFICIENCIAS
-    print(f"\n📊 RESUMEN DE EFICIENCIAS")
-    print(f"{'─'*60}")
+    #print(f"\n📊 RESUMEN DE EFICIENCIAS")
+    #print(f"{'─'*60}")
     
     # Eficiencia temporal general
-    tiempo_nominal = 480  # 8 horas en minutos
-    tiempo_real_max = max((v['duracion_vuelta_min'] + v.get('inicio_min', 0)) for v in resultado['resumen_vueltas']) if resultado['resumen_vueltas'] else 0
-    if tiempo_real_max > 0:
-        eficiencia_temporal = min((tiempo_nominal / tiempo_real_max) * 100, 100)
-        print(f"Eficiencia temporal del turno: {eficiencia_temporal:.1f}%")
+    #tiempo_nominal = 480  # 8 horas en minutos
+    #tiempo_real_max = max((v['duracion_vuelta_min'] + v.get('inicio_min', 0)) for v in resultado['resumen_vueltas']) if resultado['resumen_vueltas'] else 0
+    #if tiempo_real_max > 0:
+    #    eficiencia_temporal = min((tiempo_nominal / tiempo_real_max) * 100, 100)
+    #    print(f"Eficiencia temporal del turno: {eficiencia_temporal:.1f}%")
     
     # Eficiencia de fusión (solo V1)
-    v1 = next((v for v in resultado['resumen_vueltas'] if v['vuelta'] == 1), None)
-    if v1 and v1['pre_quemados_pallets'] > 0:
-        eficiencia_fusion = (v1['post_cargados_pallets'] / v1['pre_quemados_pallets']) * 100
-        print(f"Eficiencia de fusión V1: {eficiencia_fusion:.1f}%")
-        print(f"Tasa de reducción: {100 - eficiencia_fusion:.1f}%")
+    #v1 = next((v for v in resultado['resumen_vueltas'] if v['vuelta'] == 1), None)
+    #if v1 and v1['pre_quemados_pallets'] > 0:
+    #    eficiencia_fusion = (v1['post_cargados_pallets'] / v1['pre_quemados_pallets']) * 100
+    #    print(f"Eficiencia de fusión V1: {eficiencia_fusion:.1f}%")
+    #    print(f"Tasa de reducción: {100 - eficiencia_fusion:.1f}%")
     
     # Eficiencias de recursos
-    print(f"Utilización de grúa: {overall['utilizacion_prom']:.1%}")
-    if ice['valor']:
-        print(f"Productividad picking (ICE): {ice['valor']:.1f} cajas/picker/hora")
+    #print(f"Utilización de grúa: {overall['utilizacion_prom']:.1%}")
+    #if ice['valor']:
+        #print(f"Productividad picking (ICE): {ice['valor']:.1f} cajas/picker/hora")
     
     # 8. CONFIGURACIÓN UTILIZADA
     print(f"\n⚙️  CONFIGURACIÓN UTILIZADA")
@@ -262,33 +263,33 @@ def main():
     print(f"   Chequeadores: {cfg['cap_chequeador']}")
     print(f"   Patio (slots): {cfg['cap_patio']}")
     
-    print(f"Parámetros pallets:")
-    print(f"   Target por vuelta: {cfg['target_pallets_por_vuelta']}")
-    print(f"   Capacidad por camión: {cfg['capacidad_pallets_camion']}")
-    print(f"   Cajas mixto: {cfg['cajas_mixto']}")
-    print(f"   Cajas completo: {cfg['cajas_completo']}")
+    #print(f"Parámetros pallets:")
+    #print(f"   Target por vuelta: {cfg['target_pallets_por_vuelta']}")
+    #print(f"   Capacidad por camión: {cfg['capacidad_pallets_camion']}")
+    #print(f"   Cajas mixto: {cfg['cajas_mixto']}")
+    #print(f"   Cajas completo: {cfg['cajas_completo']}")
     
     # 9. CONCLUSIONES Y RECOMENDACIONES
-    print(f"\n💡 CONCLUSIONES Y RECOMENDACIONES")
-    print(f"{'─'*60}")
+    #print(f"\n💡 CONCLUSIONES Y RECOMENDACIONES")
+    #print(f"{'─'*60}")
     
     # Análisis automático de resultados
-    if resultado['overrun_total_min'] == 0:
-        print(f"✅ EXCELENTE: Turno completado dentro del tiempo nominal")
-    elif resultado['overrun_total_min'] < 30:
-        print(f"✅ BUENO: Overrun mínimo ({resultado['overrun_total_min']:.1f} min)")
-    elif resultado['overrun_total_min'] < 60:
-        print(f"⚠️  REGULAR: Overrun moderado ({resultado['overrun_total_min']:.1f} min)")
-    else:
-        print(f"🚨 CRÍTICO: Overrun significativo ({resultado['overrun_total_min']:.1f} min)")
+    #if resultado['overrun_total_min'] == 0:
+    #    print(f"✅ EXCELENTE: Turno completado dentro del tiempo nominal")
+    #elif resultado['overrun_total_min'] < 30:
+    #   print(f"✅ BUENO: Overrun mínimo ({resultado['overrun_total_min']:.1f} min)")
+    #elif resultado['overrun_total_min'] < 60:
+    #    print(f"⚠️  REGULAR: Overrun moderado ({resultado['overrun_total_min']:.1f} min)")
+    #else:
+    #    print(f"🚨 CRÍTICO: Overrun significativo ({resultado['overrun_total_min']:.1f} min)")
     
-    if overall['utilizacion_prom'] > 0.85:
-        print(f"⚠️  Grúa en alta utilización - Considerar capacidad adicional")
-    elif overall['utilizacion_prom'] < 0.6:
-        print(f"💡 Grúa sub-utilizada - Oportunidad de optimización")
+    #if overall['utilizacion_prom'] > 0.85:
+    #    print(f"⚠️  Grúa en alta utilización - Considerar capacidad adicional")
+    #elif overall['utilizacion_prom'] < 0.6:
+    #    print(f"💡 Grúa sub-utilizada - Oportunidad de optimización")
     
-    if ice['valor'] and ice['valor'] < 60:
-        print(f"💡 ICE bajo - Revisar eficiencia de picking")
+    #if ice['valor'] and ice['valor'] < 60:
+    #    print(f"💡 ICE bajo - Revisar eficiencia de picking")
     
     print(f"\n{'='*80}")
     print(f"🎉 ANÁLISIS COMPLETO TERMINADO")
