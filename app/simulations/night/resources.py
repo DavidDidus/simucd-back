@@ -65,7 +65,6 @@ class Centro:
             with self.pick.request() as r:
                 q_pick = len(self.pick.queue); t_req_pick = self.env.now
                 yield r
-                print(f"[Debug] V{vuelta} C{id_cam}: WAIT pick={self.env.now - t_req_pick:.2f} (cola={q_pick})")
                 t_prep_range = cfg["t_prep_mixto"]
                 yield self.env.timeout(U_rng(self.rng, t_prep_range[0], t_prep_range[1]))
 
