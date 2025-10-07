@@ -2,31 +2,30 @@
 
 # Configuración exacta de tu simulación
 DEFAULT_CONFIG = {
-    "camiones": 21,
-    "cap_patio": 16,                 # SOLO restringe camiones de la 1ª vuelta (carga)
+    "camiones": 23,
+    "cap_patio": 16,
 
     # Tamaños de pallet (cajas) por tipo
-    "cajas_mixto": (1, 40),
-    "cajas_completo": (40, 70),
+    "cajas_mixto": (1, 50),
+    "cajas_completo": (40, 90),
 
     # Plan vs carga real
-    "target_pallets_por_vuelta": (15,22), # asignación PRE-fusión por camión (rango)
-    "capacidad_pallets_camion": (10,16),  # capacidad real por camión en 1ª vuelta (post-fusión, solo mixtos)
+    "target_pallets_por_vuelta": (12,22), 
+    "capacidad_pallets_camion": (10,11),  
 
     # Calidad (chequeo solo en 1ª vuelta)
     "p_defecto": 0.01,
 
     # Tiempos (min)
-    "t_prep_mixto": (4, 7),           # Reducido de (6, 10)
-    "t_desp_completo": (1, 2),        # Reducido  
-    "t_acomodo_primera": (0.6, 1.2),  # Reducido
-    "t_acomodo_otra": (0.4, 0.8),     # Reducido
-    "t_chequeo_pallet": (0.4, 1),     # Reducido
-    "t_correccion": (1.0, 2.0),       # Reducido
-    "t_carga_pallet": (0.8, 1.5),     # Reducido
-    "t_ajuste_capacidad": (1.5, 3.0), # Reducido
-    "t_mover_camion": (1.0, 2.0),     # Reducido
-    
+    "t_prep_mixto": (4, 7),            
+    "t_desp_completo": (1, 2),          
+    "t_acomodo_primera": (0.6, 1.2),  
+    "t_acomodo_otra": (0.4, 0.8),     
+    "t_chequeo_pallet": (0.4, 1),     
+    "t_correccion": (1.0, 2.0),       
+    "t_carga_pallet": (0.8, 1.5),     
+    "t_ajuste_capacidad": (1.5, 3.0), 
+    "t_mover_camion": (1.0, 2.0),     
 
     # Recursos
     "cap_picker": 14,
@@ -41,10 +40,12 @@ DEFAULT_CONFIG = {
 
     # ICE (horas efectivas por picker en el turno)
     "horas_efectivas_ice": 7.1,
+}
 
-    "batch_acomodo": True,           # Agrupar operaciones de acomodo
-    "prefetch_completos": True,      # Pre-posicionar pallets completos
-
+WEIBULL_CAJAS_PARAMS = {
+    "alpha": 4.9329,    # parámetro de forma
+    "beta": 808.69,     # parámetro de escala  
+    "gamma": 124.63     # parámetro de ubicación (desplazamiento)
 }
 
 # Prioridades para la grúa (menor número = mayor prioridad)

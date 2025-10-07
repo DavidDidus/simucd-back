@@ -1,15 +1,19 @@
 # app/simulations/night_shift/resources.py
 import simpy
 from collections import defaultdict
-from .utils import U_rng, sample_int_or_range_rng, hhmm_dias
-from .config import PRIO_R1, PRIO_R2PLUS
+from .utils import U_rng, sample_int_or_range_rng, hhmm_dias,sample_weibull_cajas,calcular_capacidad_objetiva
+from .config import PRIO_R1, PRIO_R2PLUS, WEIBULL_CAJAS_PARAMS
 
 class Centro:
-    def __init__(self, env, cfg, pick_gate, rng):
+    def __init__(self, env, cfg, pick_gate, rng, total_cajas_facturadas=None, num_camiones_estimado=None):
         self.env = env
         self.cfg = cfg
         self.pick_gate = pick_gate  # {v: {'target':N_cam, 'count':0, 'event':env.event(), 'done_time':None}}
         self.rng = rng
+
+        self.capacidad_objetiva = None
+        if total_cajas_facturadas and num_camiones_estimado:
+            self.capacidad_objetiva = calcular_capacidad_objetiva(total_cajas_facturadas, num_camiones_estimado)
 
         # Recursos
         self.pick = simpy.Resource(env, capacity=cfg["cap_picker"])
@@ -91,7 +95,7 @@ class Centro:
         cajas_pick_mixto_camion = sum(p["cajas"] for p in pre_asignados if p["mixto"])
         post_cargados = len(pre_asignados) - fusionados if vuelta == 1 else len(pre_asignados)
         
-        self.eventos.append({
+        evento = {
             "vuelta": vuelta,
             "camion": id_cam,
             "pre_asignados": len(pre_asignados),
@@ -105,11 +109,24 @@ class Centro:
             "fin_hhmm": hhmm_dias(cfg["shift_start_min"] + t1),
             "tiempo_min": t1 - t0,
             "modo": ("carga" if vuelta == 1 else "staging")
-        })
+        }
+
+        if hasattr(self, '_capacidades_usadas'):
+            cap_info = self._capacidades_usadas
+            evento.update({
+                'capacidad_pallets_disponible': cap_info['capacidad_pallets_disponible'],
+                'capacidad_cajas_disponible': cap_info['capacidad_cajas_disponible'],
+                'utilizacion_pallets_pct': (post_cargados / cap_info['capacidad_pallets_disponible'] * 100) if cap_info['capacidad_pallets_disponible'] > 0 else 0,
+                'utilizacion_cajas_pct': (sum(p["cajas"] for p in pre_asignados) / cap_info['capacidad_cajas_disponible'] * 100) if cap_info['capacidad_cajas_disponible'] > 0 else 0,
+                'limitado_por': 'cajas' if cap_info['cajas_asignadas'] > cap_info['capacidad_cajas_disponible'] else ('pallets' if cap_info['pallets_asignados'] > cap_info['capacidad_pallets_disponible'] else 'ninguno')
+            })
+            delattr(self, '_capacidades_usadas')
+        self.eventos.append(evento)
+            
 
     def _procesar_vuelta_1_secuencial(self, vuelta, id_cam, pallets_asignados):
         """
-        Vuelta 1 SECUENCIAL pero con flujo correcto:
+        Vuelta 1 SECUENCIAL con flujo :
         1. Despacho+Acomodo de TODOS
         2. Chequeo de TODOS  
         3. Fusión basada en resultados
@@ -160,29 +177,58 @@ class Centro:
                     yield self.env.timeout(U_rng(self.rng, t_chequeo_range[0], t_chequeo_range[1]))
             
             pallets_chequeados = pallets_asignados  # Todos ya chequeados
-            cap_cam = sample_int_or_range_rng(self.rng, cfg["capacidad_pallets_camion"])
+            cajas_totales = sum(p["cajas"] for p in pallets_chequeados)
+            
+            # *** USAR DISTRIBUCIÓN WEIBULL PARA CAPACIDAD DE CAJAS ***
+            cap_cajas = sample_weibull_cajas(
+                self.rng, 
+                WEIBULL_CAJAS_PARAMS["alpha"],
+                WEIBULL_CAJAS_PARAMS["beta"], 
+                WEIBULL_CAJAS_PARAMS["gamma"],
+            )
+            
+
+            cap_pallets = sample_int_or_range_rng(self.rng, cfg["capacidad_pallets_camion"])
+            
+             # Calcular cajas asignadas
+            cajas_asignadas = sum(p["cajas"] for p in pallets_chequeados)
+            
+            # *** LÓGICA DE CARGA REALISTA ***
             fusionados = 0
             
-            if len(pallets_chequeados) > cap_cam:
-                exceso = len(pallets_chequeados) - cap_cam
-                idx_mixtos = [i for i, p in enumerate(pallets_chequeados) if p["mixto"]]
-                a_fusionar = min(exceso, len(idx_mixtos))
+            # Solo fusionar si realmente excede la capacidad
+            if cajas_asignadas > cap_cajas or len(pallets_chequeados) > cap_pallets:
+                # Estrategia: Mantener los pallets más eficientes (más cajas)
+                pallets_ordenados = sorted(pallets_chequeados, key=lambda x: x["cajas"], reverse=True)
                 
-                if a_fusionar > 0:
-                    quitar = set(self.rng.sample(idx_mixtos, a_fusionar))
-                    pallets_finales = [p for i, p in enumerate(pallets_chequeados) if i not in quitar]
-                    fusionados = a_fusionar
-                else:
-                    pallets_finales = pallets_chequeados[:cap_cam]
-                    fusionados = len(pallets_chequeados) - cap_cam
+                pallets_finales = []
+                cajas_cargadas = 0
+                pallets_count = 0
+                
+                for pallet in pallets_ordenados:
+                    puede_cargar = (
+                        cajas_cargadas + pallet["cajas"] <= cap_cajas and 
+                        pallets_count < cap_pallets
+                    )
+                    
+                    if puede_cargar:
+                        pallets_finales.append(pallet)
+                        cajas_cargadas += pallet["cajas"]
+                        pallets_count += 1
+                    else:
+                        fusionados += 1
+                
             else:
+                # Cabe todo sin problemas
                 pallets_finales = pallets_chequeados
+                cajas_cargadas = cajas_asignadas
             
             # ==================== FASE 4: CARGA (SOLO FINALES) ====================
             for i, pal in enumerate(pallets_finales):
                 t_carga_range = cfg["t_carga_pallet"]
                 dur_c = U_rng(self.rng, t_carga_range[0], t_carga_range[1])
                 yield from self._usar_grua(PRIO_R1, dur_c, "carga", vuelta, id_cam)
+            
             
             # Cierre
             with self.parr.request() as p:
@@ -192,6 +238,18 @@ class Centro:
                 yield m
                 yield self.env.timeout(U_rng(self.rng, cfg["t_mover_camion"][0], cfg["t_mover_camion"][1]))
         
+            self._capacidades_usadas = {
+                'camion': id_cam,
+                'vuelta': vuelta,
+                'capacidad_pallets_disponible': cap_pallets,
+                'capacidad_cajas_disponible': cap_cajas,
+                'pallets_asignados': len(pallets_asignados),
+                'cajas_asignadas': cajas_totales,
+                'pallets_finales': len(pallets_finales),
+                'cajas_finales': sum(p["cajas"] for p in pallets_finales),
+                'fusionados': fusionados
+            }
+
         return corregidos, fusionados
 
     def _procesar_staging_secuencial(self, vuelta, id_cam, pre_asignados):

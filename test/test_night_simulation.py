@@ -27,8 +27,8 @@ def main():
     print(f"{'='*80}\n")
     
     # Parámetros de la simulación
-    total_cajas_facturadas = 20000
-    cajas_para_pick = 15000
+    total_cajas_facturadas = 14000
+    cajas_para_pick = 13000
     seed = 42  # Para reproducibilidad
     
     print(f"📋 PARÁMETROS DE ENTRADA:")
@@ -91,6 +91,7 @@ def main():
     # 3. ANÁLISIS DETALLADO POR VUELTA
     print(f"\n🔄 ANÁLISIS DETALLADO POR VUELTA")
     print(f"{'─'*60}")
+
     
     for i, vuelta in enumerate(resultado['resumen_vueltas']):
         v_num = vuelta['vuelta']
@@ -122,6 +123,159 @@ def main():
             print(f"      ⚠️  Overrun: {vuelta['overrun_min']:.1f} min")
         else:
             print(f"      ✅ Sin overrun")
+    
+    print(f"\n🚛 DESGLOSE DETALLADO POR CAMIÓN")
+    print(f"{'='*80}")
+    
+    # Obtener información de todos los camiones de todas las vueltas
+    if 'centro_eventos' in resultado:
+        eventos_camiones = resultado['centro_eventos']
+        
+        # Agrupar por vuelta
+        camiones_por_vuelta = {}
+        for evento in eventos_camiones:
+            vuelta = evento['vuelta']
+            if vuelta not in camiones_por_vuelta:
+                camiones_por_vuelta[vuelta] = []
+            camiones_por_vuelta[vuelta].append(evento)
+        
+        total_camiones = 0
+        total_pallets_todos = 0
+        total_cajas_todas = 0
+        
+        for vuelta in sorted(camiones_por_vuelta.keys()):
+            camiones = camiones_por_vuelta[vuelta]
+            modo = "CARGA" if vuelta == 1 else "STAGING"
+            
+            print(f"\n🔄 VUELTA {vuelta} - {modo}")
+            print(f"{'─'*70}")
+            print(f"Camiones en esta vuelta: {len(camiones)}")
+
+             # Encabezados de tabla
+            #print(f"\n{'ID':>3} │ {'Pallets':>8} │ {'Cajas':>8} │ {'Mix/Comp':>8} │ {'Fusión':>7} │ {'Tiempo':>8}")
+            #print(f"{'───':>3}─┼─{'────────':>8}─┼─{'────────':>8}─┼─{'────────':>8}─┼─{'───────':>7}─┼─{'────────':>8}")
+            
+           # total_pallets_vuelta = 0
+           # total_cajas_vuelta = 0
+           # total_fusionados_vuelta = 0
+            
+           # for camion in sorted(camiones, key=lambda x: x['camion']):
+           #     id_cam = camion['camion']
+           #     pre_pallets = camion['pre_asignados']
+           #     post_pallets = camion.get('post_cargados', pre_pallets)
+           #     cajas_total = camion['cajas_pre']
+           #     fusionados = camion.get('fusionados', 0)
+           #     tiempo_min = camion['tiempo_min']
+                
+                # Determinar tipo predominante
+             #   cajas_mixto = camion.get('cajas_pick_mixto', 0)
+           #     cajas_completo = cajas_total - cajas_mixto
+            #    tipo = f"{cajas_mixto}M/{cajas_completo}C"
+                
+                # Para vuelta 1, mostrar fusionados
+            #    if vuelta == 1:
+          #          fusion_info = f"{fusionados:>3}"
+           #     else:
+            #        fusion_info = "─"
+                
+         #       print(f"{id_cam:>3} │ {pre_pallets:>3}→{post_pallets:>3} │ {cajas_total:>8,} │ {tipo:>8} │ {fusion_info:>7} │ {tiempo_min:>6.1f}m")
+                
+          #      total_pallets_vuelta += post_pallets
+          #      total_cajas_vuelta += cajas_total
+          #      total_fusionados_vuelta += fusionados
+          #      total_camiones += 1
+            
+            # Totales por vuelta
+          #  print(f"{'───':>3}─┼─{'────────':>8}─┼─{'────────':>8}─┼─{'────────':>8}─┼─{'───────':>7}─┼─{'────────':>8}")
+          #  fusion_total = f"{total_fusionados_vuelta}" if vuelta == 1 else "─"
+          #  print(f"{'TOT':>3} │ {total_pallets_vuelta:>8} │ {total_cajas_vuelta:>8,} │ {'':>8} │ {fusion_total:>7} │ {'':>8}")
+            
+            #total_pallets_todos += total_pallets_vuelta
+            #total_cajas_todas += total_cajas_vuelta
+            
+             # Estadísticas de la vuelta
+            #if len(camiones) > 0:
+                #promedio_pallets = total_pallets_vuelta / len(camiones)
+                #promedio_cajas = total_cajas_vuelta / len(camiones)
+                #promedio_tiempo = sum(c['tiempo_min'] for c in camiones) / len(camiones)
+                
+                #print(f"\n📊 Estadísticas Vuelta {vuelta}:")
+               # print(f"   • Promedio pallets/camión: {promedio_pallets:.1f}")
+              #  print(f"   • Promedio cajas/camión: {promedio_cajas:,.0f}")
+             #   print(f"   • Tiempo promedio: {promedio_tiempo:.1f} min")
+                
+            #    if vuelta == 1 and total_fusionados_vuelta > 0:
+           #         tasa_fusion = (total_fusionados_vuelta / sum(c['pre_asignados'] for c in camiones)) * 100
+          #          print(f"   • Tasa de fusión: {tasa_fusion:.1f}%")
+         # # ================== RESUMEN GENERAL DE CAMIONES ==================
+        
+        #print(f"\n📈 RESUMEN GENERAL DE TODOS LOS CAMIONES")
+        #print(f"{'='*70}")
+       # print(f"Total camiones procesados: {total_camiones}")
+      #  print(f"Total pallets cargados: {total_pallets_todos:,}")
+      #  print(f"Total cajas transportadas: {total_cajas_todas:,}")
+        
+      #  if total_camiones > 0:
+      #      print(f"Promedio pallets por camión: {total_pallets_todos / total_camiones:.1f}")
+     #       print(f"Promedio cajas por camión: {total_cajas_todas / total_camiones:,.0f}")
+        
+        # ================== ANÁLISIS DE CAPACIDADES ==================
+        
+      #  print(f"\n📦 ANÁLISIS DE CAPACIDADES UTILIZADAS")
+      #  print(f"{'─'*70}")
+        
+        # Buscar información de capacidades si está disponible
+       # capacidades_utilizadas = []
+       # for evento in eventos_camiones:
+       #     if 'capacidad_pallets_usada' in evento or 'capacidad_cajas_usada' in evento:
+       #         capacidades_utilizadas.append({
+       #             'camion': evento['camion'],
+       #             'vuelta': evento['vuelta'],
+       #             'pallets_cap': evento.get('capacidad_pallets_usada', 'N/A'),
+       #             'cajas_cap': evento.get('capacidad_cajas_usada', 'N/A'),
+       #             'pallets_real': evento.get('post_cargados', evento['pre_asignados']),
+       #             'cajas_real': evento['cajas_pre']
+       #         })
+       # if capacidades_utilizadas:
+      #      print(f"{'ID':>3} │ {'Vuelta':>6} │ {'Cap.Pal':>7} │ {'Real.Pal':>8} │ {'Cap.Cajas':>9} │ {'Real.Cajas':>10} │ {'Util%':>6}")
+     #       print(f"{'───':>3}─┼─{'──────':>6}─┼─{'───────':>7}─┼─{'────────':>8}─┼─{'─────────':>9}─┼─{'──────────':>10}─┼─{'──────':>6}")
+    #        
+    #        for cap in sorted(capacidades_utilizadas, key=lambda x: (x['vuelta'], x['camion'])):
+    #            util_pal = (cap['pallets_real'] / cap['pallets_cap'] * 100) if cap['pallets_cap'] != 'N/A' else 0
+    #            util_cajas = (cap['cajas_real'] / cap['cajas_cap'] * 100) if cap['cajas_cap'] != 'N/A' else 0
+    #            util_prom = (util_pal + util_cajas) / 2 if util_pal > 0 and util_cajas > 0 else max(util_pal, util_cajas)
+                
+    #            print(f"{cap['camion']:>3} │ {cap['vuelta']:>6} │ {cap['pallets_cap']:>7} │ {cap['pallets_real']:>8} │ {cap['cajas_cap']:>9} │ {cap['cajas_real']:>10,} │ {util_prom:>5.1f}%")
+        
+        # ================== TOP CAMIONES ==================
+        
+    #    print(f"\n🏆 TOP CAMIONES")
+    #    print(f"{'─'*50}")
+        
+        # Top por cajas
+    #    camiones_ordenados_cajas = sorted(eventos_camiones, key=lambda x: x['cajas_pre'], reverse=True)[:5]
+    #    print(f"🥇 TOP 5 - MÁS CAJAS:")
+    #    for i, cam in enumerate(camiones_ordenados_cajas, 1):
+    #        print(f"   {i}. Camión {cam['camion']} (V{cam['vuelta']}): {cam['cajas_pre']:,} cajas")
+        
+         # Top por pallets
+    #    camiones_ordenados_pallets = sorted(eventos_camiones, key=lambda x: x.get('post_cargados', x['pre_asignados']), reverse=True)[:5]
+    #    print(f"\n📦 TOP 5 - MÁS PALLETS:")
+    #    for i, cam in enumerate(camiones_ordenados_pallets, 1):
+    #        pallets = cam.get('post_cargados', cam['pre_asignados'])
+    #        print(f"   {i}. Camión {cam['camion']} (V{cam['vuelta']}): {pallets} pallets")
+        
+        # Top por tiempo
+    #    camiones_ordenados_tiempo = sorted(eventos_camiones, key=lambda x: x['tiempo_min'], reverse=True)[:5]
+    #    print(f"\n⏱️  TOP 5 - MÁS TIEMPO:")
+    #    for i, cam in enumerate(camiones_ordenados_tiempo, 1):
+    #        print(f"   {i}. Camión {cam['camion']} (V{cam['vuelta']}): {cam['tiempo_min']:.1f} min")
+        
+    #else:
+    #    print(f"⚠️  No se encontró información detallada de camiones en el resultado")
+    #    print(f"   Verifica que 'centro_eventos' esté incluido en el resultado de la simulación")
+
+            
         
         
         # Métricas específicas por tipo
@@ -140,13 +294,13 @@ def main():
     # 4. ICE (ÍNDICE DE CAPACIDAD EFECTIVA)
     #print(f"\n📈 ICE - ÍNDICE DE CAPACIDAD EFECTIVA (MIXTAS)")
     #print(f"{'─'*60}")
-    #ice = resultado['ice_mixto']
+    ice = resultado['ice_mixto']
     #print(f"Cajas mixtas pickeadas: {ice['total_cajas_pickeadas_mixtas']:,}")
     #print(f"Pickers disponibles: {ice['pickers']}")
     #print(f"Horas efectivas configuradas: {ice['horas_efectivas']}")
     
-   # if ice['valor']:
-       #print(f"ICE CALCULADO: {ice['valor']:.2f} cajas/picker/hora")
+    if ice['valor']:
+        print(f"ICE CALCULADO: {ice['valor']:.2f} cajas/picker/hora")
         
         # Interpretación del ICE
         #if ice['valor'] < 50:

@@ -95,3 +95,79 @@ def calcular_ice_mixto(centro, cfg):
         "horas_efectivas": horas_eff,
         "valor": ice_val_mixto
     }
+    
+
+def analizar_capacidades_camiones(centro_eventos):
+    """
+    Analiza el uso de capacidades de los camiones
+    """
+    analisis = {
+        'por_vuelta': {},
+        'limitaciones': {'cajas': 0, 'pallets': 0, 'ninguno': 0},
+        'utilizacion_promedio': {'pallets': 0, 'cajas': 0},
+        'estadisticas': {}
+    }
+    
+    eventos_con_capacidad = [e for e in centro_eventos if 'capacidad_pallets_disponible' in e]
+    
+    if not eventos_con_capacidad:
+        return analisis
+    
+    # Análisis por vuelta
+    for evento in eventos_con_capacidad:
+        vuelta = evento['vuelta']
+        if vuelta not in analisis['por_vuelta']:
+            analisis['por_vuelta'][vuelta] = {
+                'camiones': 0,
+                'util_pallets_total': 0,
+                'util_cajas_total': 0,
+                'capacidades_pallets': [],
+                'capacidades_cajas': []
+            }
+        
+        v_data = analisis['por_vuelta'][vuelta]
+        v_data['camiones'] += 1
+        v_data['util_pallets_total'] += evento.get('utilizacion_pallets_pct', 0)
+        v_data['util_cajas_total'] += evento.get('utilizacion_cajas_pct', 0)
+        v_data['capacidades_pallets'].append(evento['capacidad_pallets_disponible'])
+        v_data['capacidades_cajas'].append(evento['capacidad_cajas_disponible'])
+        
+        # Contar limitaciones
+        limitado_por = evento.get('limitado_por', 'ninguno')
+        if limitado_por in analisis['limitaciones']:
+            analisis['limitaciones'][limitado_por] += 1
+    
+    # Calcular promedios
+    for vuelta, data in analisis['por_vuelta'].items():
+        if data['camiones'] > 0:
+            data['util_pallets_prom'] = data['util_pallets_total'] / data['camiones']
+            data['util_cajas_prom'] = data['util_cajas_total'] / data['camiones']
+            data['capacidad_pallets_prom'] = sum(data['capacidades_pallets']) / len(data['capacidades_pallets'])
+            data['capacidad_cajas_prom'] = sum(data['capacidades_cajas']) / len(data['capacidades_cajas'])
+    
+    # Estadísticas generales
+    total_camiones = len(eventos_con_capacidad)
+    if total_camiones > 0:
+        analisis['utilizacion_promedio']['pallets'] = sum(e.get('utilizacion_pallets_pct', 0) for e in eventos_con_capacidad) / total_camiones
+        analisis['utilizacion_promedio']['cajas'] = sum(e.get('utilizacion_cajas_pct', 0) for e in eventos_con_capacidad) / total_camiones
+    
+    return analisis
+
+def obtener_top_camiones(centro_eventos, criterio='cajas', top_n=5):
+    """
+    Obtiene los top N camiones según el criterio especificado
+    """
+    if criterio == 'cajas':
+        key_func = lambda x: x.get('cajas_pre', 0)
+    elif criterio == 'pallets':
+        key_func = lambda x: x.get('post_cargados', x.get('pre_asignados', 0))
+    elif criterio == 'tiempo':
+        key_func = lambda x: x.get('tiempo_min', 0)
+    elif criterio == 'utilizacion_cajas':
+        key_func = lambda x: x.get('utilizacion_cajas_pct', 0)
+    elif criterio == 'utilizacion_pallets':
+        key_func = lambda x: x.get('utilizacion_pallets_pct', 0)
+    else:
+        key_func = lambda x: x.get('cajas_pre', 0)
+    
+    return sorted(centro_eventos, key=key_func, reverse=True)[:top_n]
