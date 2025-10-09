@@ -50,14 +50,29 @@ def calcular_resumen_vueltas(plan, centro, cfg):
     resumen_por_vuelta = []
     shift_end = cfg["shift_end_min"]
 
+    almuerzo_inicio = cfg.get("almuerzo_inicio_min", 120)  # 2:00 AM
+    pausa_almuerzo = 30  # 30 minutos de pausa
+
+
     for (vuelta, asignaciones) in plan:
         items = [e for e in centro.eventos if e["vuelta"] == vuelta]
         if not items:
             continue
 
-        inicio_min   = min(e["inicio_min"] for e in items)              # inicio real (tras gate)
-        fin_oper_min = max(e["fin_min"]    for e in items)              # fin operativo (incluye acomodo/carga)
-        pick_fin_min = centro.pick_gate[vuelta]["done_time"]            # fin de PICK (gate liberado)
+        inicio_min_bruto   = min(e["inicio_min"] for e in items)              # inicio real (tras gate)
+        fin_oper_min_bruto = max(e["fin_min"]    for e in items)              # fin operativo (incluye acomodo/carga)
+        pick_fin_min_bruto = centro.pick_gate[vuelta]["done_time"]            # fin de PICK (gate liberado)
+
+         # Ajustar tiempos si ocurren después del almuerzo
+        inicio_min = inicio_min_bruto + (pausa_almuerzo if inicio_min_bruto >= almuerzo_inicio else 0)
+        fin_oper_min = fin_oper_min_bruto + (pausa_almuerzo if fin_oper_min_bruto >= almuerzo_inicio else 0)
+        
+        if pick_fin_min_bruto is not None:
+            print("a")
+            pick_fin_min = pick_fin_min_bruto + (pausa_almuerzo if pick_fin_min_bruto >= almuerzo_inicio else 0)
+        else:
+            print("b")
+            pick_fin_min = None
 
         fin_resumen_min = pick_fin_min if pick_fin_min is not None else fin_oper_min
 

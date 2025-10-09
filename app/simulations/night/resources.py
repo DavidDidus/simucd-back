@@ -26,6 +26,12 @@ class Centro:
         self.prio_acomodo_v1 = PRIO_R1   # prioridad alta para acomodo en 1ª vuelta
         env.process(self._rebalanceo_post_pick_v1())
 
+        self.pausa_activa = False
+        self.tiempo_pre_pausa = None
+        
+        # Programar salto automático de tiempo
+        env.process(self._manejar_salto_almuerzo())
+
         # Logs
         self.eventos = []          # por camión/vuelta
         self.grua_ops = []         # logs de cada uso de grúa
@@ -137,6 +143,8 @@ class Centro:
         
         with self.patio_camiones.request() as slot:
             yield slot
+
+            
             
             # ==================== FASE 1: DESPACHO + ACOMODO (TODOS) ====================
             primera = True
@@ -266,3 +274,35 @@ class Centro:
                 t_desp_range = cfg["t_desp_completo"]
                 dur_dc = U_rng(self.rng, t_desp_range[0], t_desp_range[1])
                 yield from self._usar_grua(PRIO_R2PLUS, dur_dc, "despacho_completo_v2", vuelta, id_cam)
+    
+    def _manejar_salto_almuerzo(self):
+        """Maneja el salto automático de tiempo durante el almuerzo"""
+        cfg = self.cfg
+        almuerzo_inicio = cfg.get("almuerzo_inicio_min", 120)    # 2:00 AM
+        almuerzo_fin = cfg.get("almuerzo_fin_min", 150)         # 2:30 AM  
+        tiempo_salto = cfg.get("almuerzo_salto_min", 180)       # 3:00 AM (destino del salto)
+        
+        # Esperar hasta las 2:00 AM
+        yield self.env.timeout(almuerzo_inicio)
+        
+        print(f"[ALMUERZO {hhmm_dias(almuerzo_inicio)}] 🍽️  PAUSA INICIADA - Operaciones suspendidas hasta las 3:00 AM")
+        
+        # Marcar pausa activa
+        self.pausa_activa = True
+        self.tiempo_pre_pausa = self.env.now
+        
+        # Esperar hasta las 2:30 AM
+        yield self.env.timeout(almuerzo_fin - almuerzo_inicio)  # 30 minutos
+        
+        # *** SALTO DE TIEMPO: De 2:30 AM directo a 3:00 AM ***
+        tiempo_actual = self.env.now  # Debería ser 150 (2:30 AM)
+        tiempo_salto_necesario = tiempo_salto - tiempo_actual  # 180 - 150 = 30 min
+        
+        print(f"[ALMUERZO {hhmm_dias(tiempo_actual)}] ⏭️  SALTANDO TIEMPO - De 2:30 AM a 3:00 AM (+{tiempo_salto_necesario} min)")
+        
+        # Realizar el salto
+        yield self.env.timeout(tiempo_salto_necesario)
+        
+        self.pausa_activa = False
+        
+        print(f"[ALMUERZO {hhmm_dias(self.env.now)}] ✅ OPERACIONES REANUDADAS - Trabajadores de vuelta")
