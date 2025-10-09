@@ -27,8 +27,8 @@ def main():
     print(f"{'='*80}\n")
     
     # Parámetros de la simulación
-    total_cajas_facturadas = 14000
-    cajas_para_pick = 13000
+    total_cajas_facturadas = 30000
+    cajas_para_pick = 26000
     seed = 42  # Para reproducibilidad
     
     print(f"📋 PARÁMETROS DE ENTRADA:")

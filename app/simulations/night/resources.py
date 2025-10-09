@@ -57,7 +57,11 @@ class Centro:
         yield ev
         self.prio_acomodo_v1 = PRIO_R2PLUS
 
-    def procesa_camion_vuelta(self, vuelta, id_cam, pallets_asignados):
+    def procesa_camion_vuelta(self, vuelta, camion_data):
+        """Modificado para recibir datos del camión con ID"""
+        camion_id = camion_data['camion_id']
+        pallets_asignados = camion_data['pallets']
+        
         cfg = self.cfg
 
         # 1) Esperar gate si aplica
@@ -70,6 +74,9 @@ class Centro:
         # ==================== FASE A: PICK (SÓLO MIXTOS) ====================
         pre_asignados = pallets_asignados
         pick_list = [p for p in pre_asignados if p["mixto"]]
+
+        # Registrar cajas pickeadas por camión
+        cajas_pickeadas_mixto = sum(p["cajas"] for p in pick_list)
 
         for pal in pick_list:
             with self.pick.request() as r:
@@ -91,10 +98,10 @@ class Centro:
 
         if vuelta == 1:
             # *** SECUENCIAL CON FUSIÓN POST-CHEQUEO ***
-            corregidos, fusionados = yield from self._procesar_vuelta_1_secuencial(vuelta, id_cam, pre_asignados)
+            corregidos, fusionados = yield from self._procesar_vuelta_1_secuencial(vuelta, camion_id, pre_asignados)
         else:
             # Vueltas 2+ también secuenciales
-            yield from self._procesar_staging_secuencial(vuelta, id_cam, pre_asignados)
+            yield from self._procesar_staging_secuencial(vuelta, camion_id, pre_asignados)
 
         # Log por camión
         t1 = self.env.now
@@ -103,13 +110,19 @@ class Centro:
         
         evento = {
             "vuelta": vuelta,
-            "camion": id_cam,
+            "camion_id": camion_id,  # Usar camion_id en lugar de camion
             "pre_asignados": len(pre_asignados),
             "post_cargados": post_cargados,
             "fusionados": fusionados,
             "corregidos": corregidos,
             "cajas_pre": sum(p["cajas"] for p in pre_asignados),
             "cajas_pick_mixto": cajas_pick_mixto_camion,
+            "cajas_pickeadas_detalle": {
+                "pallets_mixtos": [{"id": p["id"], "cajas": p["cajas"]} for p in pre_asignados if p["mixto"]],
+                "pallets_completos": [{"id": p["id"], "cajas": p["cajas"]} for p in pre_asignados if not p["mixto"]],
+                "total_cajas_mixtas": cajas_pick_mixto_camion,
+                "total_cajas_completas": sum(p["cajas"] for p in pre_asignados if not p["mixto"])
+            },
             "inicio_min": t0, "fin_min": t1,
             "inicio_hhmm": hhmm_dias(cfg["shift_start_min"] + t0),
             "fin_hhmm": hhmm_dias(cfg["shift_start_min"] + t1),
@@ -130,7 +143,7 @@ class Centro:
         self.eventos.append(evento)
             
 
-    def _procesar_vuelta_1_secuencial(self, vuelta, id_cam, pallets_asignados):
+    def _procesar_vuelta_1_secuencial(self, vuelta, camion_id, pallets_asignados):
         """
         Vuelta 1 SECUENCIAL con flujo :
         1. Despacho+Acomodo de TODOS
@@ -144,8 +157,6 @@ class Centro:
         with self.patio_camiones.request() as slot:
             yield slot
 
-            
-            
             # ==================== FASE 1: DESPACHO + ACOMODO (TODOS) ====================
             primera = True
             for i, pal in enumerate(pallets_asignados):
@@ -153,12 +164,12 @@ class Centro:
                 if not pal["mixto"]:
                     t_desp_range = cfg["t_desp_completo"]
                     dur_dc = U_rng(self.rng, t_desp_range[0], t_desp_range[1])
-                    yield from self._usar_grua(PRIO_R1, dur_dc, "despacho_completo", vuelta, id_cam)
+                    yield from self._usar_grua(PRIO_R1, dur_dc, "despacho_completo", vuelta, camion_id)
                 
                 # Acomodo (todos)
                 t_acomodo_range = cfg["t_acomodo_primera"] if primera else cfg["t_acomodo_otra"]
                 dur_a = U_rng(self.rng, t_acomodo_range[0], t_acomodo_range[1])
-                yield from self._usar_grua(self.prio_acomodo_v1, dur_a, "acomodo_v1", vuelta, id_cam)
+                yield from self._usar_grua(self.prio_acomodo_v1, dur_a, "acomodo_v1", vuelta, camion_id)
                 primera = False
             
             # ==================== FASE 2: CHEQUEO (TODOS) ====================
@@ -177,8 +188,7 @@ class Centro:
             for i, pal in pallets_con_defecto:
                 t_corr_range = cfg["t_correccion"]
                 dur_corr = U_rng(self.rng, t_corr_range[0], t_corr_range[1])
-                yield from self._usar_grua(PRIO_R1, dur_corr, "correccion", vuelta, id_cam)
-                
+                yield from self._usar_grua(PRIO_R1, dur_corr, "correccion", vuelta, camion_id)
                 # Re-chequeo
                 with self.cheq.request() as c:
                     yield c
@@ -194,7 +204,6 @@ class Centro:
                 WEIBULL_CAJAS_PARAMS["beta"], 
                 WEIBULL_CAJAS_PARAMS["gamma"],
             )
-            
 
             cap_pallets = sample_int_or_range_rng(self.rng, cfg["capacidad_pallets_camion"])
             
@@ -235,7 +244,7 @@ class Centro:
             for i, pal in enumerate(pallets_finales):
                 t_carga_range = cfg["t_carga_pallet"]
                 dur_c = U_rng(self.rng, t_carga_range[0], t_carga_range[1])
-                yield from self._usar_grua(PRIO_R1, dur_c, "carga", vuelta, id_cam)
+                yield from self._usar_grua(PRIO_R1, dur_c, "carga", vuelta, camion_id)
             
             
             # Cierre
@@ -247,7 +256,7 @@ class Centro:
                 yield self.env.timeout(U_rng(self.rng, cfg["t_mover_camion"][0], cfg["t_mover_camion"][1]))
         
             self._capacidades_usadas = {
-                'camion': id_cam,
+                'camion': camion_id,
                 'vuelta': vuelta,
                 'capacidad_pallets_disponible': cap_pallets,
                 'capacidad_cajas_disponible': cap_cajas,
@@ -260,7 +269,7 @@ class Centro:
 
         return corregidos, fusionados
 
-    def _procesar_staging_secuencial(self, vuelta, id_cam, pre_asignados):
+    def _procesar_staging_secuencial(self, vuelta, camion_id, pre_asignados):
         cfg = self.cfg
         primera = True
         
@@ -268,13 +277,13 @@ class Centro:
             if pal["mixto"]:
                 t_acomodo_range = cfg["t_acomodo_primera"] if primera else cfg["t_acomodo_otra"]
                 dur_a = U_rng(self.rng, t_acomodo_range[0], t_acomodo_range[1])
-                yield from self._usar_grua(PRIO_R2PLUS, dur_a, "acomodo_v2", vuelta, id_cam)
+                yield from self._usar_grua(PRIO_R2PLUS, dur_a, "acomodo_v2", vuelta, camion_id)
                 primera = False
             else:
                 t_desp_range = cfg["t_desp_completo"]
                 dur_dc = U_rng(self.rng, t_desp_range[0], t_desp_range[1])
-                yield from self._usar_grua(PRIO_R2PLUS, dur_dc, "despacho_completo_v2", vuelta, id_cam)
-    
+                yield from self._usar_grua(PRIO_R2PLUS, dur_dc, "despacho_completo_v2", vuelta, camion_id)
+
     def _manejar_salto_almuerzo(self):
         """Maneja el salto automático de tiempo durante el almuerzo"""
         cfg = self.cfg

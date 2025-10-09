@@ -5,6 +5,72 @@ from .generators import generar_pallets_desde_cajas_dobles, construir_plan_desde
 from .resources import Centro
 from .metrics import _resumir_grua, calcular_resumen_vueltas, calcular_ice_mixto
 
+def generar_json_vueltas_camiones(plan, centro):
+    """Genera JSON con número de vuelta, camiones y cajas asignadas"""
+    vueltas_data = {
+        "vueltas": [],
+        "info_reutilizacion": {
+            "camiones_v1": [],
+            "total_vueltas_por_camion": {}
+        }
+    }
+    
+    # Identificar camiones de V1 para tracking
+    camiones_v1 = []
+    if plan:
+        primera_vuelta = plan[0]
+        if primera_vuelta[0] == 1:  # Confirmar que es vuelta 1
+            for asignacion in primera_vuelta[1]:
+                camiones_v1.append(asignacion['camion_id'])
+    
+    vueltas_data["info_reutilizacion"]["camiones_v1"] = camiones_v1
+    
+    # Contar participaciones por camión
+    conteo_participaciones = {}
+    
+    # Obtener todas las vueltas del plan
+    for vuelta_num, asignaciones in plan:
+        # Procesar eventos de esta vuelta
+        eventos_vuelta = [e for e in centro.eventos if e["vuelta"] == vuelta_num]
+        
+        vuelta_info = {
+            "numero_vuelta": vuelta_num,
+            "tipo_operacion": "carga" if vuelta_num == 1 else "staging",
+            "camiones": []
+        }
+        
+        for evento in eventos_vuelta:
+            camion_id = evento["camion_id"]
+            
+            # Contar participación
+            if camion_id not in conteo_participaciones:
+                conteo_participaciones[camion_id] = 0
+            conteo_participaciones[camion_id] += 1
+            
+            camion_info = {
+                "camion_id": camion_id,
+                "cajas_asignadas": evento["cajas_pre"],
+                "pre_asignados": evento["pre_asignados"],
+            }
+            vuelta_info["camiones"].append(camion_info)
+        
+        vueltas_data["vueltas"].append(vuelta_info)
+    
+    # Agregar información de reutilización
+    vueltas_data["info_reutilizacion"]["total_vueltas_por_camion"] = conteo_participaciones
+    
+    # Estadísticas de reutilización
+    camiones_reutilizados = [c for c, count in conteo_participaciones.items() if count > 1]
+    vueltas_data["info_reutilizacion"]["estadisticas"] = {
+        "total_camiones_unicos": len(conteo_participaciones),
+        "camiones_reutilizados": len(camiones_reutilizados),
+        "tasa_reutilizacion": len(camiones_reutilizados) / len(camiones_v1) * 100 if camiones_v1 else 0,
+        "promedio_vueltas_por_camion": sum(conteo_participaciones.values()) / len(conteo_participaciones) if conteo_participaciones else 0
+    }
+    
+    return vueltas_data
+
+
 def simular_turno_prioridad_rng(total_cajas_facturadas, cajas_para_pick, cfg, seed=None):
     rng = make_rng(seed)
     env = simpy.Environment()
@@ -34,8 +100,8 @@ def simular_turno_prioridad_rng(total_cajas_facturadas, cajas_para_pick, cfg, se
     # *** PROCESAR TODAS LAS VUELTAS ***
     for (vuelta, asignaciones) in plan:
         print(f"[SIMULATION DEBUG] Procesando vuelta {vuelta} con {len(asignaciones)} camiones")
-        for cam_id, pallets_cam in enumerate(asignaciones, start=1):
-            env.process(centro.procesa_camion_vuelta(vuelta, cam_id, pallets_cam))
+        for camion_data in asignaciones:
+            env.process(centro.procesa_camion_vuelta(vuelta, camion_data))
 
     env.run()
 
@@ -44,7 +110,9 @@ def simular_turno_prioridad_rng(total_cajas_facturadas, cajas_para_pick, cfg, se
     grua_metrics = _resumir_grua(centro, cfg, total_fin)
     ice_mixto = calcular_ice_mixto(centro, cfg)
 
-    return {
+    primera_vuelta_json = generar_json_vueltas_camiones(plan, centro)
+
+    resultado_base =  {
         "entradas_cajas": {
             "total_cajas_facturadas": int(total_cajas_facturadas),
             "cajas_para_pick": int(min(cajas_para_pick, total_cajas_facturadas)),
@@ -67,3 +135,7 @@ def simular_turno_prioridad_rng(total_cajas_facturadas, cajas_para_pick, cfg, se
         "planificacion_detalle": plan,  # Plan original con asignaciones
         "pick_gates": pick_gate,  # Estados de los gates de pick
     }
+
+    resultado_base.update(primera_vuelta_json)
+
+    return resultado_base

@@ -2,6 +2,63 @@
 from .config import WEIBULL_CAJAS_PARAMS, DEFAULT_CONFIG
 from .utils import sample_weibull_cajas
 
+# IDs de camiones disponibles
+CAMION_IDS = [
+    "E44", "E45", "E46", "E47", "E48", "E49", "E50", "E51", "E52", "E55",
+    "E71", "E72", "E73", "E74", "E75", "E76", "E77", "E78", "E79", "E80",
+    "E81", "E82", "E83", "E87", "E89", "E90", "E91", "E92", "E93", "E94",
+    "E95", "E96", "E97", "E98", "E99", "E100", "E101", "E102", "E103", "E104"
+]
+
+def asignar_ids_camiones(plan):
+    """Asigna IDs reales a los camiones, reutilizando los de V1 en vueltas posteriores"""
+    plan_con_ids = []
+    camiones_v1_ids = []  # IDs de camiones usados en V1
+    
+    for vuelta, asignaciones in plan:
+        asignaciones_con_ids = []
+        
+        if vuelta == 1:
+            # Primera vuelta: asignar IDs nuevos
+            for cam_index, pallets_cam in enumerate(asignaciones):
+                if cam_index < len(CAMION_IDS):
+                    camion_id = CAMION_IDS[cam_index]
+                else:
+                    # Si se agotan los IDs, generar más con el mismo formato
+                    camion_id = f"E{105 + (cam_index - len(CAMION_IDS))}"
+                
+                camiones_v1_ids.append(camion_id)  # Guardar para reutilizar
+                
+                asignaciones_con_ids.append({
+                    'camion_id': camion_id,
+                    'pallets': pallets_cam
+                })
+        else:
+            # Vueltas 2+: REUTILIZAR camiones de V1 
+            for cam_index, pallets_cam in enumerate(asignaciones):
+                if cam_index < len(camiones_v1_ids):
+                    # USAR EL MISMO CAMION DE V1
+                    camion_id = camiones_v1_ids[cam_index]
+                else:
+                    # Si necesitamos más camiones que los de V1, usar camiones adicionales
+                    # Pero esto debería ser raro si la lógica está bien
+                    id_adicional = len(camiones_v1_ids) + (cam_index - len(camiones_v1_ids))
+                    if id_adicional < len(CAMION_IDS):
+                        camion_id = CAMION_IDS[id_adicional]
+                    else:
+                        camion_id = f"E{105 + (id_adicional - len(CAMION_IDS))}"
+                    print(f"[WARNING] Vuelta {vuelta}: Usando camión adicional {camion_id} (índice {cam_index})")
+                
+                asignaciones_con_ids.append({
+                    'camion_id': camion_id,
+                    'pallets': pallets_cam
+                })
+        
+        plan_con_ids.append((vuelta, asignaciones_con_ids))
+    
+    print(f"[DEBUG] Camiones V1: {camiones_v1_ids}")
+    return plan_con_ids
+
 def generar_pallets_desde_cajas_dobles(total_cajas_facturadas, cajas_para_pick, cfg, rng):
     """
     Genera pallets con MÁS CAJAS por pallet para llenar mejor los camiones
@@ -234,5 +291,5 @@ def construir_plan_desde_pallets(pallets, cfg, rng):
                 print(f"[WARNING] Máximo de vueltas alcanzado")
                 break
     
-    return plan_final
+    return asignar_ids_camiones(plan_final)
 
