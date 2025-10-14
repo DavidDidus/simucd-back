@@ -34,20 +34,10 @@ def asignar_ids_camiones(plan):
                     'pallets': pallets_cam
                 })
         else:
-            # Vueltas 2+: REUTILIZAR camiones de V1 
+            # Vueltas 2+: REUTILIZAR camiones de V1 CÍCLICAMENTE
             for cam_index, pallets_cam in enumerate(asignaciones):
-                if cam_index < len(camiones_v1_ids):
-                    # USAR EL MISMO CAMION DE V1
-                    camion_id = camiones_v1_ids[cam_index]
-                else:
-                    # Si necesitamos más camiones que los de V1, usar camiones adicionales
-                    # Pero esto debería ser raro si la lógica está bien
-                    id_adicional = len(camiones_v1_ids) + (cam_index - len(camiones_v1_ids))
-                    if id_adicional < len(CAMION_IDS):
-                        camion_id = CAMION_IDS[id_adicional]
-                    else:
-                        camion_id = f"E{105 + (id_adicional - len(CAMION_IDS))}"
-                    print(f"[WARNING] Vuelta {vuelta}: Usando camión adicional {camion_id} (índice {cam_index})")
+                # Usar módulo para reutilizar camiones cíclicamente
+                camion_id = camiones_v1_ids[cam_index % len(camiones_v1_ids)]
                 
                 asignaciones_con_ids.append({
                     'camion_id': camion_id,
@@ -56,7 +46,7 @@ def asignar_ids_camiones(plan):
         
         plan_con_ids.append((vuelta, asignaciones_con_ids))
     
-    print(f"[DEBUG] Camiones V1: {camiones_v1_ids}")
+    print(f"Camiones V1: {camiones_v1_ids}")
     return plan_con_ids
 
 def generar_pallets_desde_cajas_dobles(total_cajas_facturadas, cajas_para_pick, cfg, rng):
@@ -269,7 +259,6 @@ def construir_plan_desde_pallets(pallets, cfg, rng):
                         break
                 
                 if pallets_este_camion:
-                    print(f"[DEBUG] V{vuelta_num} - Camión {i+1}: {len(pallets_este_camion)} pallets, {cajas_acumuladas:,} cajas")
                     asignaciones_vuelta.append(pallets_este_camion)
                 else:
                     print(f"[DEBUG] V{vuelta_num} - Camión {i+1}: NO SE ASIGNARON PALLETS")
