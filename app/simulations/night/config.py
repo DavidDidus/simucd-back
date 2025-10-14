@@ -11,25 +11,21 @@ DEFAULT_CONFIG = {
 
     # Plan vs carga real
     "target_pallets_por_vuelta": (12,22), 
-    "capacidad_pallets_camion": (10,11),  
+    "capacidad_pallets_camion": (10,16),  
 
     # Calidad (chequeo solo en 1ª vuelta)
     "p_defecto": 0.01,
 
     # Tiempos (min)
-    "t_prep_mixto": (4, 7),            #
-    "t_desp_completo": (1, 2),          #
-    "t_acomodo_primera": (0.6, 1.2),  
+    "t_acomodo_primera": (0.4, 0.8),  
     "t_acomodo_otra": (0.4, 0.8),     
-    "t_chequeo_pallet": (0.4, 1),     #
     "t_correccion": (1.0, 2.0),       #
-    "t_carga_pallet": (0.8, 1.5),     #
     "t_ajuste_capacidad": (1.5, 3.0), #
     "t_mover_camion": (1.0, 2.0),     #
 
     # Recursos
     "cap_picker": 14,
-    "cap_gruero": 5,                 # grúa única lógica con capacidad 4 (sin roles)
+    "cap_gruero": 4,                 # grúa única lógica con capacidad 4 (sin roles)
     "cap_chequeador": 2,
     "cap_parrillero": 1,
     "cap_movilizador": 1,
@@ -53,6 +49,24 @@ LOGNORMAL_PALLETS_CHEQUEO = {
     "mu": -0.5677,
     "gamma": 0.17475
 }
+
+CHISQUARED_PREP_MIXTO = {
+    "df": 5,          # grados de libertad
+    "scale": 0.83594      # escala
+}
+
+LOGNORMAL_CARGA_PALLET = {
+    "sigma": 0.16484,
+    "mu": 0.99524,
+    "gamma": -0.95211
+}
+
+LOGNORMAL_DESPACHO_COMPLETO = {
+    "sigma": 0.51271,
+    "mu": 0.50798,
+    "gamma": 0.0  # Sin desplazamiento (ajustar si es necesario)
+}
+
 
 
 # Prioridades para la grúa (menor número = mayor prioridad)

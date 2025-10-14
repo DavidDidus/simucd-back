@@ -1,6 +1,9 @@
-# app/simulations/night_shift/generators.py
+"""
+Generador de pallets y plan de carga para simulación nocturna
+Usa generador NumPy para todas las operaciones aleatorias
+"""
 from .config import WEIBULL_CAJAS_PARAMS, DEFAULT_CONFIG
-from .utils import sample_weibull_cajas
+from .utils import sample_weibull_cajas, RI_rng
 
 # IDs de camiones disponibles
 CAMION_IDS = [
@@ -51,21 +54,23 @@ def asignar_ids_camiones(plan):
 
 def generar_pallets_desde_cajas_dobles(total_cajas_facturadas, cajas_para_pick, cfg, rng):
     """
-    Genera pallets con MÁS CAJAS por pallet para llenar mejor los camiones
+    Genera pallets con MÁS CAJAS por pallet para llenar mejor los camiones.
+    Usa generador NumPy para todas las operaciones aleatorias.
     """
     cajas_completas = total_cajas_facturadas - cajas_para_pick
     
-    # *** AUMENTAR CAJAS POR PALLET MIXTO ***
+    # *** GENERAR PALLETS MIXTOS ***
     pallets_mixtos = []
     cajas_restantes_mixtas = cajas_para_pick
     
     while cajas_restantes_mixtas > 0:
-        # Usar rango más alto de cajas por pallet
+        # Usar rango de cajas por pallet mixto
         min_cajas = cfg.get("cajas_por_pallet_mixto", [25, 45])[0]
         max_cajas = cfg.get("cajas_por_pallet_mixto", [25, 45])[1]
         
-        cajas_este_pallet = rng.randint(min_cajas, max_cajas)
-        cajas_este_pallet = min(cajas_este_pallet, cajas_restantes_mixtas)
+        # *** USAR RI_rng PARA NÚMEROS ENTEROS ***
+        cajas_este_pallet = RI_rng(rng, min_cajas, max_cajas)
+        cajas_este_pallet = min(cajas_este_pallet, int(cajas_restantes_mixtas))
         
         pallets_mixtos.append({
             "mixto": True,
@@ -75,17 +80,18 @@ def generar_pallets_desde_cajas_dobles(total_cajas_facturadas, cajas_para_pick, 
         
         cajas_restantes_mixtas -= cajas_este_pallet
     
-    # *** AUMENTAR CAJAS POR PALLET COMPLETO ***
+    # *** GENERAR PALLETS COMPLETOS ***
     pallets_completos = []
     cajas_restantes_completas = cajas_completas
     
     while cajas_restantes_completas > 0:
-        # Usar rango más alto de cajas por pallet
+        # Usar rango de cajas por pallet completo
         min_cajas = cfg.get("cajas_por_pallet_completo", [35, 55])[0]
         max_cajas = cfg.get("cajas_por_pallet_completo", [35, 55])[1]
         
-        cajas_este_pallet = rng.randint(min_cajas, max_cajas)
-        cajas_este_pallet = min(cajas_este_pallet, cajas_restantes_completas)
+        # *** USAR RI_rng PARA NÚMEROS ENTEROS ***
+        cajas_este_pallet = RI_rng(rng, min_cajas, max_cajas)
+        cajas_este_pallet = min(cajas_este_pallet, int(cajas_restantes_completas))
         
         pallets_completos.append({
             "mixto": False,
@@ -106,8 +112,17 @@ def generar_pallets_desde_cajas_dobles(total_cajas_facturadas, cajas_para_pick, 
     
     return todos_los_pallets, resumen
 
-# *** FUNCIÓN PARA GENERAR CAPACIDADES WEIBULL ***
-def generar_capacidades_camiones(num_camiones,rng):
+def generar_capacidades_camiones(num_camiones, rng):
+    """
+    Genera capacidades de camiones usando distribución Weibull
+    
+    Args:
+        num_camiones: Número de camiones
+        rng: Generador NumPy
+        
+    Returns:
+        list: Lista de capacidades ordenadas de mayor a menor
+    """
     capacidades = []
     for _ in range(num_camiones):
         cap = sample_weibull_cajas(
@@ -121,7 +136,8 @@ def generar_capacidades_camiones(num_camiones,rng):
 
 def construir_plan_desde_pallets(pallets, cfg, rng):
     """
-    Construye plan basado en capacidades reales de la distribución Weibull
+    Construye plan basado en capacidades reales de la distribución Weibull.
+    Usa generador NumPy para todas las operaciones aleatorias.
     """
     if not pallets:
         return []
@@ -132,7 +148,7 @@ def construir_plan_desde_pallets(pallets, cfg, rng):
     
     cajas_totales = sum(p["cajas"] for p in pallets)
     
-    # Asignación para vuelta 1 (código existente...)
+    # Asignación para vuelta 1
     asignaciones_v1 = []
     pallets_disponibles = pallets[:]
     
@@ -194,13 +210,11 @@ def construir_plan_desde_pallets(pallets, cfg, rng):
         pallets_restantes = pallets_sobrantes[:]
         
         while pallets_restantes:
-            
             # *** CALCULAR CAMIONES NECESARIOS USANDO WEIBULL ***
             cajas_esta_vuelta = sum(p["cajas"] for p in pallets_restantes)
             
-              # *** USAR LA MISMA CAPACIDAD DE CAMIONES QUE V1 ***
-            # Las vueltas 2+ tienen acceso a todos los camiones, no solo la mitad
-            max_camiones_staging = max_camiones  # MISMA capacidad que V1
+            # *** USAR LA MISMA CAPACIDAD DE CAMIONES QUE V1 ***
+            max_camiones_staging = max_camiones
             capacidades_staging = generar_capacidades_camiones(max_camiones_staging, rng)
             
             # Calcular cuántos camiones realmente necesitamos
@@ -208,7 +222,7 @@ def construir_plan_desde_pallets(pallets, cfg, rng):
             cajas_cubiertas_staging = 0
             
             for i, capacidad in enumerate(capacidades_staging):
-                cajas_cubiertas_staging += capacidad * 0.75  # 75% utilización para staging (un poco menos que V1)
+                cajas_cubiertas_staging += capacidad * 0.75  # 75% utilización para staging
                 camiones_necesarios = i + 1
                 if cajas_cubiertas_staging >= cajas_esta_vuelta:
                     break
@@ -224,6 +238,7 @@ def construir_plan_desde_pallets(pallets, cfg, rng):
             pallets_restantes_grandes = [p for p in pallets_restantes if p["cajas"] >= 60]
             pallets_restantes_otros = [p for p in pallets_restantes if p["cajas"] < 60]
             
+            # *** USAR rng.shuffle() DE NUMPY ***
             rng.shuffle(pallets_restantes_grandes)
             rng.shuffle(pallets_restantes_otros)
             
@@ -235,7 +250,7 @@ def construir_plan_desde_pallets(pallets, cfg, rng):
                 pallets_este_camion = []
                 cajas_acumuladas = 0
                 
-                # Target para staging: 70-80% de capacidad (más conservador que V1)
+                # Target para staging: 70-80% de capacidad
                 target_min = int(capacidad_camion * 0.70)
                 target_max = int(capacidad_camion * 0.80)
                 
@@ -281,4 +296,3 @@ def construir_plan_desde_pallets(pallets, cfg, rng):
                 break
     
     return asignar_ids_camiones(plan_final)
-

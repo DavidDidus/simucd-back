@@ -249,35 +249,6 @@ def main():
         
         # ================== TOP CAMIONES ==================
         
-    #    print(f"\n🏆 TOP CAMIONES")
-    #    print(f"{'─'*50}")
-        
-        # Top por cajas
-    #    camiones_ordenados_cajas = sorted(eventos_camiones, key=lambda x: x['cajas_pre'], reverse=True)[:5]
-    #    print(f"🥇 TOP 5 - MÁS CAJAS:")
-    #    for i, cam in enumerate(camiones_ordenados_cajas, 1):
-    #        print(f"   {i}. Camión {cam['camion']} (V{cam['vuelta']}): {cam['cajas_pre']:,} cajas")
-        
-         # Top por pallets
-    #    camiones_ordenados_pallets = sorted(eventos_camiones, key=lambda x: x.get('post_cargados', x['pre_asignados']), reverse=True)[:5]
-    #    print(f"\n📦 TOP 5 - MÁS PALLETS:")
-    #    for i, cam in enumerate(camiones_ordenados_pallets, 1):
-    #        pallets = cam.get('post_cargados', cam['pre_asignados'])
-    #        print(f"   {i}. Camión {cam['camion']} (V{cam['vuelta']}): {pallets} pallets")
-        
-        # Top por tiempo
-    #    camiones_ordenados_tiempo = sorted(eventos_camiones, key=lambda x: x['tiempo_min'], reverse=True)[:5]
-    #    print(f"\n⏱️  TOP 5 - MÁS TIEMPO:")
-    #    for i, cam in enumerate(camiones_ordenados_tiempo, 1):
-    #        print(f"   {i}. Camión {cam['camion']} (V{cam['vuelta']}): {cam['tiempo_min']:.1f} min")
-        
-    #else:
-    #    print(f"⚠️  No se encontró información detallada de camiones en el resultado")
-    #    print(f"   Verifica que 'centro_eventos' esté incluido en el resultado de la simulación")
-
-            
-        
-        
         # Métricas específicas por tipo
         #if v_num == 1:  # Vuelta 1 - CARGA
         #    print(f"   Métricas de carga:")
@@ -317,10 +288,10 @@ def main():
     # 5. ANÁLISIS COMPLETO DE GRÚA
     #print(f"\n🏗️  ANÁLISIS COMPLETO DE GRÚA")
     #print(f"{'─'*60}")
-    
-    #grua = resultado['grua']
-    #overall = grua['overall']
-    
+
+    grua = resultado['grua']
+    overall = grua['overall']
+
     #print(f"📊 MÉTRICAS GENERALES:")
     #print(f"   Operaciones totales: {overall['ops']}")
     #print(f"   Tiempo total ocupado: {overall['total_hold_min']:.1f} min ({formato_tiempo(overall['total_hold_min'])})")
@@ -358,21 +329,21 @@ def main():
     #    print(f"      Tiempo promedio por operación: {data['mean_hold_min']:.2f} min")
     
     # 6. DETECCIÓN DE CUELLOS DE BOTELLA
-    #print(f"\n🚧 ANÁLISIS DE CUELLOS DE BOTELLA")
-    #print(f"{'─'*60}")
+    print(f"\n🚧 ANÁLISIS DE CUELLOS DE BOTELLA")
+    print(f"{'─'*60}")
     
     # Operación con mayor espera
-    #if grua['por_label']:
-    #    max_wait_op = max(grua['por_label'].items(), key=lambda x: x[1]['mean_wait_min'])
-    #    print(f"Operación con mayor espera: {max_wait_op[0]}")
-    #    print(f"   Espera promedio: {max_wait_op[1]['mean_wait_min']:.2f} min")
-    #    if max_wait_op[1]['mean_wait_min'] > 3:
-    #        print(f"   ⚠️  CUELLO DE BOTELLA DETECTADO")
+    if grua['por_label']:
+        max_wait_op = max(grua['por_label'].items(), key=lambda x: x[1]['mean_wait_min'])
+        print(f"Operación con mayor espera: {max_wait_op[0]}")
+        print(f"   Espera promedio: {max_wait_op[1]['mean_wait_min']:.2f} min")
+        if max_wait_op[1]['mean_wait_min'] > 3:
+            print(f"   ⚠️  CUELLO DE BOTELLA DETECTADO")
     
     # Vuelta más lenta
-    #vuelta_lenta = max(resultado['resumen_vueltas'], key=lambda x: x['duracion_vuelta_min'])
-    #print(f"Vuelta más lenta: V{vuelta_lenta['vuelta']}")
-    #print(f"   Duración: {vuelta_lenta['duracion_vuelta_min']:.1f} min")
+    vuelta_lenta = max(resultado['resumen_vueltas'], key=lambda x: x['duracion_vuelta_min'])
+    print(f"Vuelta más lenta: V{vuelta_lenta['vuelta']}")
+    print(f"   Duración: {vuelta_lenta['duracion_vuelta_min']:.1f} min")
     
     # Análisis de overrun por vuelta
     #overruns = [v for v in resultado['resumen_vueltas'] if v['overrun_min'] > 0]

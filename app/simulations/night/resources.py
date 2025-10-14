@@ -1,14 +1,15 @@
-# app/simulations/night_shift/resources.py
+# app/simulations/night/resources.py
 import simpy
+import numpy as np
 from collections import defaultdict
-from .utils import U_rng, sample_int_or_range_rng, hhmm_dias,sample_weibull_cajas,calcular_capacidad_objetiva, calcular_tiempo_chequeo_lognormal
-from .config import PRIO_R1, PRIO_R2PLUS, WEIBULL_CAJAS_PARAMS
+from .utils import U_rng, sample_int_or_range_rng, hhmm_dias, sample_weibull_cajas, calcular_capacidad_objetiva, calcular_tiempo_chequeo_lognormal, sample_chisquared_prep_mixto, sample_tiempo_carga_pallet, sample_tiempo_despacho_completo
+from .config import PRIO_R1, PRIO_R2PLUS, WEIBULL_CAJAS_PARAMS,CHISQUARED_PREP_MIXTO
 
 class Centro:
     def __init__(self, env, cfg, pick_gate, rng, total_cajas_facturadas=None, num_camiones_estimado=None):
         self.env = env
         self.cfg = cfg
-        self.pick_gate = pick_gate  # {v: {'target':N_cam, 'count':0, 'event':env.event(), 'done_time':None}}
+        self.pick_gate = pick_gate
         self.rng = rng
 
         self.capacidad_objetiva = None
@@ -17,25 +18,26 @@ class Centro:
 
         # Recursos
         self.pick = simpy.Resource(env, capacity=cfg["cap_picker"])
-        self.grua = simpy.PriorityResource(env, capacity=cfg["cap_gruero"])  # grúa única con cap=4
+        self.grua = simpy.PriorityResource(env, capacity=cfg["cap_gruero"])
         self.cheq = simpy.Resource(env, capacity=cfg["cap_chequeador"])
         self.parr = simpy.Resource(env, capacity=cfg["cap_parrillero"])
         self.movi = simpy.Resource(env, capacity=cfg["cap_movilizador"])
-        self.patio_camiones = simpy.Resource(env, capacity=cfg["cap_patio"])  # SOLO 1ª vuelta (carga)
+        self.patio_camiones = simpy.Resource(env, capacity=cfg["cap_patio"])
 
-        self.prio_acomodo_v1 = PRIO_R1   # prioridad alta para acomodo en 1ª vuelta
+        self.prio_acomodo_v1 = PRIO_R1
         env.process(self._rebalanceo_post_pick_v1())
 
-        self.pausa_activa = False
-        self.tiempo_pre_pausa = None
+        self.pausa_almuerzo_activa = False
+        self.tiempo_inicio_almuerzo = None
+        self.tiempo_fin_almuerzo = None
         
-        # Programar salto automático de tiempo
         env.process(self._manejar_salto_almuerzo())
 
         # Logs
-        self.eventos = []          # por camión/vuelta
-        self.grua_ops = []         # logs de cada uso de grúa
-
+        self.eventos = []
+        self.grua_ops = []
+        self.tiempos_prep_mixto = []
+        
     def _usar_grua(self, priority, dur, label, vuelta, id_cam):
         t_req = self.env.now
         with self.grua.request(priority=priority) as g:
@@ -53,54 +55,83 @@ class Centro:
         try:
             ev = self.pick_gate[1]['event']
         except KeyError:
-            return  # no hay vuelta 1 (caso raro)
+            return
         yield ev
         self.prio_acomodo_v1 = PRIO_R2PLUS
 
     def procesa_camion_vuelta(self, vuelta, camion_data):
-        """Modificado para recibir datos del camión con ID"""
+        """Procesamiento de camión - PICK se ejecuta ANTES de otras operaciones"""
         camion_id = camion_data['camion_id']
         pallets_asignados = camion_data['pallets']
         
         cfg = self.cfg
 
-        # 1) Esperar gate si aplica
+        # 1) Esperar gate de vuelta anterior (solo si vuelta > 1)
         if vuelta > 1:
+            print(f"[VUELTA {vuelta}] Camión {camion_id}: Esperando gate de vuelta {vuelta-1}...")
             yield self.pick_gate[vuelta - 1]['event']
+            print(f"[VUELTA {vuelta}] Camión {camion_id}: ✅ Gate activado, iniciando operaciones")
 
         # 2) Marca de inicio
         t0 = self.env.now
 
-        # ==================== FASE A: PICK (SÓLO MIXTOS) ====================
+        # ==================== FASE A: PICK (TODOS LOS MIXTOS) ====================
         pre_asignados = pallets_asignados
         pick_list = [p for p in pre_asignados if p["mixto"]]
 
-        # Registrar cajas pickeadas por camión
-        cajas_pickeadas_mixto = sum(p["cajas"] for p in pick_list)
+        if pick_list:
+            #print(f"[PICK V{vuelta}] Camión {camion_id}: Iniciando PICK de {len(pick_list)} pallets mixtos (t={self.env.now:.1f})")
+            
+            tiempos_prep_este_camion = []
 
-        for pal in pick_list:
-            with self.pick.request() as r:
-                q_pick = len(self.pick.queue); t_req_pick = self.env.now
-                yield r
-                t_prep_range = cfg["t_prep_mixto"]
-                yield self.env.timeout(U_rng(self.rng, t_prep_range[0], t_prep_range[1]))
+            for idx, pal in enumerate(pick_list):
+                with self.pick.request() as r:
+                    t_wait_start = self.env.now
+                    yield r
+                    t_wait = self.env.now - t_wait_start
 
-        # 3) Señal de fin de PICK
+                    tiempo_prep = sample_chisquared_prep_mixto(
+                        self.rng,
+                        CHISQUARED_PREP_MIXTO["df"],
+                        CHISQUARED_PREP_MIXTO["scale"]
+                    )
+
+                    tiempos_prep_este_camion.append(tiempo_prep)
+                    self.tiempos_prep_mixto.append({
+                        "vuelta": vuelta, 
+                        "camion": camion_id, 
+                        "pallet_idx": idx + 1, 
+                        "tiempo_prep_min": tiempo_prep,
+                        "tiempo_espera_min": t_wait
+                    })
+
+                    #if idx == 0 or idx == len(pick_list) - 1:  # Log primer y último pallet
+                        #print(f"[PICK V{vuelta}] Camión {camion_id} pallet {idx+1}/{len(pick_list)}: "
+                         #     f"Prep={tiempo_prep:.2f}min, Espera={t_wait:.1f}min")
+                    
+                    yield self.env.timeout(tiempo_prep)
+            
+            tiempo_prep_promedio = np.mean(tiempos_prep_este_camion)
+            #print(f"[PICK V{vuelta}] Camión {camion_id}: ✅ PICK completado (t={self.env.now:.1f}, "
+             #     f"duración={self.env.now - t0:.1f}min, prep_prom={tiempo_prep_promedio:.2f}min)")
+        else:
+            print(f"[PICK V{vuelta}] Camión {camion_id}: Sin pallets mixtos, saltando PICK")
+
+        # 3) Señal de fin de PICK para este camión
         self.pick_gate[vuelta]['count'] += 1
         if self.pick_gate[vuelta]['count'] >= self.pick_gate[vuelta]['target']:
             if not self.pick_gate[vuelta]['event'].triggered:
                 self.pick_gate[vuelta]['done_time'] = self.env.now
                 self.pick_gate[vuelta]['event'].succeed()
+                print(f"[GATE V{vuelta}] ✅ ACTIVADO - Todos los camiones de vuelta {vuelta} completaron PICK (t={self.env.now:.1f})")
 
-        # ==================== PROCESAMIENTO SECUENCIAL ====================
+        # ==================== PROCESAMIENTO POST-PICK ====================
         corregidos = 0
         fusionados = 0
 
         if vuelta == 1:
-            # *** SECUENCIAL CON FUSIÓN POST-CHEQUEO ***
             corregidos, fusionados = yield from self._procesar_vuelta_1_secuencial(vuelta, camion_id, pre_asignados)
         else:
-            # Vueltas 2+ también secuenciales
             yield from self._procesar_staging_secuencial(vuelta, camion_id, pre_asignados)
 
         # Log por camión
@@ -110,7 +141,7 @@ class Centro:
         
         evento = {
             "vuelta": vuelta,
-            "camion_id": camion_id,  # Usar camion_id en lugar de camion
+            "camion_id": camion_id,
             "pre_asignados": len(pre_asignados),
             "post_cargados": post_cargados,
             "fusionados": fusionados,
@@ -137,19 +168,18 @@ class Centro:
                 'capacidad_cajas_disponible': cap_info['capacidad_cajas_disponible'],
                 'utilizacion_pallets_pct': (post_cargados / cap_info['capacidad_pallets_disponible'] * 100) if cap_info['capacidad_pallets_disponible'] > 0 else 0,
                 'utilizacion_cajas_pct': (sum(p["cajas"] for p in pre_asignados) / cap_info['capacidad_cajas_disponible'] * 100) if cap_info['capacidad_cajas_disponible'] > 0 else 0,
-                'limitado_por': 'cajas' if cap_info['cajas_asignadas'] > cap_info['capacidad_cajas_disponible'] else ('pallets' if cap_info['pallets_asignados'] > cap_info['capacidad_pallets_disponible'] else 'ninguno')
+                'limitado_por': 'cajas' if cap_info.get('cajas_asignadas', 0) > cap_info['capacidad_cajas_disponible'] else ('pallets' if cap_info.get('pallets_asignados', 0) > cap_info['capacidad_pallets_disponible'] else 'ninguno'),
+                'tiempo_chequeo_lognormal_min': cap_info.get('tiempo_chequeo_total', 0),
+                'tasa_chequeo_pallets_por_min': cap_info.get('tasa_chequeo_promedio', 0),
+                'pallets_chequeados': cap_info.get('pallets_chequeados', 0)
             })
             delattr(self, '_capacidades_usadas')
-        self.eventos.append(evento)
             
+        self.eventos.append(evento)
 
     def _procesar_vuelta_1_secuencial(self, vuelta, camion_id, pallets_asignados):
         """
-        Vuelta 1 SECUENCIAL con flujo :
-        1. Despacho+Acomodo de TODOS
-        2. Chequeo de TODOS  
-        3. Fusión basada en resultados
-        4. Carga solo de finales
+        Vuelta 1 SECUENCIAL - PICK ya completado en procesa_camion_vuelta
         """
         cfg = self.cfg
         corregidos = 0
@@ -157,56 +187,33 @@ class Centro:
         with self.patio_camiones.request() as slot:
             yield slot
 
-            # ==================== FASE 1: DESPACHO + ACOMODO (TODOS) ====================
+            # ==================== FASE 1: DESPACHO + ACOMODO ====================
             primera = True
             for i, pal in enumerate(pallets_asignados):
-                # Despacho (solo completos)
                 if not pal["mixto"]:
-                    t_desp_range = cfg["t_desp_completo"]
-                    dur_dc = U_rng(self.rng, t_desp_range[0], t_desp_range[1])
+                    # 🆕 USAR DISTRIBUCIÓN LOGNORMAL PARA DESPACHO DE COMPLETO
+                    dur_dc = sample_tiempo_despacho_completo(self.rng)
+                    print(f"[DESPACHO] Camión {camion_id}, Pallet completo {i+1}: {dur_dc:.2f} min")
                     yield from self._usar_grua(PRIO_R1, dur_dc, "despacho_completo", vuelta, camion_id)
                 
-                # Acomodo (todos)
                 t_acomodo_range = cfg["t_acomodo_primera"] if primera else cfg["t_acomodo_otra"]
                 dur_a = U_rng(self.rng, t_acomodo_range[0], t_acomodo_range[1])
                 yield from self._usar_grua(self.prio_acomodo_v1, dur_a, "acomodo_v1", vuelta, camion_id)
                 primera = False
             
-            
-            # ==================== FASE 2: CHEQUEO CON MUESTRA ÚNICA LOGNORMAL ====================
+            # ==================== FASE 2: CHEQUEO ====================
             num_pallets_total = len(pallets_asignados)
-            
-            # *** GENERAR UNA NUEVA MUESTRA LOGNORMAL PARA ESTE CAMIÓN ESPECÍFICO ***
             tiempo_chequeo_total, tasa_chequeo_promedio = calcular_tiempo_chequeo_lognormal(num_pallets_total, self.rng)
             
-            # Crear identificador único para debugging
-            muestra_id = f"C{camion_id}_T{self.env.now:.1f}"
-            
-            print(f"[CHEQUEO NOCHE] Camión {camion_id}: {num_pallets_total} pallets, "
-                  f"tasa: {tasa_chequeo_promedio:.2f} p/min, tiempo: {tiempo_chequeo_total:.1f} min "
-                  f"[ID: {muestra_id}]")
-            
-            # *** CHEQUEO SIN INTERFERENCIA DEL ALMUERZO ***
             with self.cheq.request() as c:
-                print(f"[CHEQUEO] Camión {camion_id}: Chequeador obtenido (ocupados: {self.cheq.count}, cola: {len(self.cheq.queue)})")
                 yield c
-                
-                # *** CHEQUEO NORMAL SIN AJUSTES POR ALMUERZO ***
-                inicio_chequeo = self.env.now
                 yield self.env.timeout(tiempo_chequeo_total)
-                fin_chequeo = self.env.now
-                
-                print(f"[CHEQUEO] Camión {camion_id}: Chequeo completado ({inicio_chequeo:.1f} -> {fin_chequeo:.1f})")
-                print(f"[CHEQUEO] Estado recursos: Chequeador liberado (ocupados: {self.cheq.count}, cola: {len(self.cheq.queue)})")
             
             # Determinar defectos
             pallets_con_defecto = []
             for i, pal in enumerate(pallets_asignados):
-                probabilidad_defecto = self.rng.random()
-                if probabilidad_defecto < cfg["p_defecto"]:
+                if self.rng.random() < cfg["p_defecto"]:
                     pallets_con_defecto.append((i, pal))
-            
-                
             
             # Correcciones
             corregidos = len(pallets_con_defecto)
@@ -214,16 +221,16 @@ class Centro:
                 t_corr_range = cfg["t_correccion"]
                 dur_corr = U_rng(self.rng, t_corr_range[0], t_corr_range[1])
                 yield from self._usar_grua(PRIO_R1, dur_corr, "correccion", vuelta, camion_id)
-                # Re-chequeo con distribución lognormal (para 1 pallet)
+                
                 tiempo_rechequeo, _ = calcular_tiempo_chequeo_lognormal(1, self.rng)
                 with self.cheq.request() as c:
                     yield c
                     yield self.env.timeout(tiempo_rechequeo)
             
-            pallets_chequeados = pallets_asignados  # Todos ya chequeados
+            # ==================== FASE 3: CAPACIDADES Y FUSIÓN ====================
+            pallets_chequeados = pallets_asignados
             cajas_totales = sum(p["cajas"] for p in pallets_chequeados)
             
-            # *** USAR DISTRIBUCIÓN WEIBULL PARA CAPACIDAD DE CAJAS ***
             cap_cajas = sample_weibull_cajas(
                 self.rng, 
                 WEIBULL_CAJAS_PARAMS["alpha"],
@@ -232,18 +239,11 @@ class Centro:
             )
 
             cap_pallets = sample_int_or_range_rng(self.rng, cfg["capacidad_pallets_camion"])
-            
-             # Calcular cajas asignadas
             cajas_asignadas = sum(p["cajas"] for p in pallets_chequeados)
             
-            # *** LÓGICA DE CARGA REALISTA ***
             fusionados = 0
-            
-            # Solo fusionar si realmente excede la capacidad
             if cajas_asignadas > cap_cajas or len(pallets_chequeados) > cap_pallets:
-                # Estrategia: Mantener los pallets más eficientes (más cajas)
                 pallets_ordenados = sorted(pallets_chequeados, key=lambda x: x["cajas"], reverse=True)
-                
                 pallets_finales = []
                 cajas_cargadas = 0
                 pallets_count = 0
@@ -253,25 +253,22 @@ class Centro:
                         cajas_cargadas + pallet["cajas"] <= cap_cajas and 
                         pallets_count < cap_pallets
                     )
-                    
                     if puede_cargar:
                         pallets_finales.append(pallet)
                         cajas_cargadas += pallet["cajas"]
                         pallets_count += 1
                     else:
                         fusionados += 1
-                
             else:
-                # Cabe todo sin problemas
                 pallets_finales = pallets_chequeados
                 cajas_cargadas = cajas_asignadas
             
-            # ==================== FASE 4: CARGA (SOLO FINALES) ====================
+            # ==================== FASE 4: CARGA ====================
             for i, pal in enumerate(pallets_finales):
-                t_carga_range = cfg["t_carga_pallet"]
-                dur_c = U_rng(self.rng, t_carga_range[0], t_carga_range[1])
+                # *** USAR DISTRIBUCIÓN LOGNORMAL PARA TIEMPO DE CARGA ***
+                dur_c = sample_tiempo_carga_pallet(self.rng)
+                print(f"[CARGA] Camión {camion_id}, Pallet {i+1}/{len(pallets_finales)}: {dur_c:.2f} min")
                 yield from self._usar_grua(PRIO_R1, dur_c, "carga", vuelta, camion_id)
-            
             
             # Cierre
             with self.parr.request() as p:
@@ -290,14 +287,20 @@ class Centro:
                 'cajas_asignadas': cajas_totales,
                 'pallets_finales': len(pallets_finales),
                 'cajas_finales': sum(p["cajas"] for p in pallets_finales),
-                'fusionados': fusionados
+                'fusionados': fusionados,
+                'tiempo_chequeo_total': tiempo_chequeo_total,
+                'tasa_chequeo_promedio': tasa_chequeo_promedio,
+                'pallets_chequeados': num_pallets_total
             }
 
         return corregidos, fusionados
 
     def _procesar_staging_secuencial(self, vuelta, camion_id, pre_asignados):
+        """Vuelta 2+ STAGING - PICK ya completado en procesa_camion_vuelta"""
         cfg = self.cfg
         primera = True
+
+        print(f"[STAGING V{vuelta}] Camión {camion_id}: Iniciando staging de {len(pre_asignados)} pallets")
         
         for pal in pre_asignados:
             if pal["mixto"]:
@@ -306,47 +309,30 @@ class Centro:
                 yield from self._usar_grua(PRIO_R2PLUS, dur_a, "acomodo_v2", vuelta, camion_id)
                 primera = False
             else:
-                t_desp_range = cfg["t_desp_completo"]
-                dur_dc = U_rng(self.rng, t_desp_range[0], t_desp_range[1])
+                dur_dc = sample_tiempo_despacho_completo(self.rng)
+                print(f"[DESPACHO V{vuelta}] Camión {camion_id}, Pallet completo: {dur_dc:.2f} min")
                 yield from self._usar_grua(PRIO_R2PLUS, dur_dc, "despacho_completo_v2", vuelta, camion_id)
+                
+        print(f"[STAGING V{vuelta}] Camión {camion_id}: ✅ Staging completado")
 
-    
     def _manejar_salto_almuerzo(self):
-        """
-        Manejo SIMPLIFICADO del salto de almuerzo SIN manipular recursos internos
-        """
+        """Manejo simplificado del salto de almuerzo"""
         cfg = self.cfg
-        almuerzo_inicio = cfg.get("almuerzo_inicio_min", 120)    # 2:00 AM
-        tiempo_salto = cfg.get("almuerzo_salto_min", 150)       # 3:00 AM (destino final)
+        almuerzo_inicio = cfg.get("almuerzo_inicio_min", 120)
+        tiempo_salto = cfg.get("almuerzo_salto_min", 150)
         
-        # Esperar hasta las 2:00 AM
         yield self.env.timeout(almuerzo_inicio)
-
         print(f"[ALMUERZO {hhmm_dias(almuerzo_inicio)}] 🍽️  PAUSA INICIADA")
         
-        # *** MARCAR INICIO DEL ALMUERZO ***
         self.pausa_almuerzo_activa = True
         self.tiempo_inicio_almuerzo = self.env.now
         
-        print(f"[ALMUERZO DEBUG] Estado recursos ANTES del salto:")
-        print(f"   Chequeadores ocupados: {self.cheq.count}/{self.cheq.capacity}")
-        print(f"   Chequeadores en cola: {len(self.cheq.queue)}")
-        
-        # *** SALTO DIRECTO A LAS 3:00 AM ***
-        tiempo_salto_necesario = tiempo_salto - self.env.now  # 180 - 120 = 60 min
-        
+        tiempo_salto_necesario = tiempo_salto - self.env.now
         print(f"[ALMUERZO {hhmm_dias(self.env.now)}] ⏭️  SALTANDO {tiempo_salto_necesario} minutos")
         
-        # Realizar el salto SIN tocar recursos internos
         yield self.env.timeout(tiempo_salto_necesario)
         
-        # *** MARCAR FIN DEL ALMUERZO ***
         self.pausa_almuerzo_activa = False
         self.tiempo_fin_almuerzo = self.env.now
         
-        print(f"[ALMUERZO DEBUG] Estado recursos DESPUÉS del salto:")
-        print(f"   Tiempo actual: {hhmm_dias(self.env.now)}")
-        print(f"   Chequeadores ocupados: {self.cheq.count}/{self.cheq.capacity}")
-        print(f"   Chequeadores en cola: {len(self.cheq.queue)}")
-        
-        print(f"[ALMUERZO {hhmm_dias(self.env.now)}] ✅ OPERACIONES REANUDADAS - Trabajadores de vuelta")
+        print(f"[ALMUERZO {hhmm_dias(self.env.now)}] ✅ OPERACIONES REANUDADAS")
