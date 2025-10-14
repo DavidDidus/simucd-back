@@ -17,15 +17,15 @@ DEFAULT_CONFIG = {
     "p_defecto": 0.01,
 
     # Tiempos (min)
-    "t_prep_mixto": (4, 7),            
-    "t_desp_completo": (1, 2),          
+    "t_prep_mixto": (4, 7),            #
+    "t_desp_completo": (1, 2),          #
     "t_acomodo_primera": (0.6, 1.2),  
     "t_acomodo_otra": (0.4, 0.8),     
-    "t_chequeo_pallet": (0.4, 1),     
-    "t_correccion": (1.0, 2.0),       
-    "t_carga_pallet": (0.8, 1.5),     
-    "t_ajuste_capacidad": (1.5, 3.0), 
-    "t_mover_camion": (1.0, 2.0),     
+    "t_chequeo_pallet": (0.4, 1),     #
+    "t_correccion": (1.0, 2.0),       #
+    "t_carga_pallet": (0.8, 1.5),     #
+    "t_ajuste_capacidad": (1.5, 3.0), #
+    "t_mover_camion": (1.0, 2.0),     #
 
     # Recursos
     "cap_picker": 14,
@@ -47,6 +47,13 @@ WEIBULL_CAJAS_PARAMS = {
     "beta": 808.69,     # parámetro de escala  
     "gamma": 124.63     # parámetro de ubicación (desplazamiento)
 }
+
+LOGNORMAL_PALLETS_CHEQUEO = {
+    "sigma": 0.54326,
+    "mu": -0.5677,
+    "gamma": 0.17475
+}
+
 
 # Prioridades para la grúa (menor número = mayor prioridad)
 PRIO_R1 = 0       # vuelta 1 (carga/chequeo/acomodo/despacho completo)

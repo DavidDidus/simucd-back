@@ -1,7 +1,7 @@
 # app/simulations/night_shift/resources.py
 import simpy
 from collections import defaultdict
-from .utils import U_rng, sample_int_or_range_rng, hhmm_dias,sample_weibull_cajas,calcular_capacidad_objetiva
+from .utils import U_rng, sample_int_or_range_rng, hhmm_dias,sample_weibull_cajas,calcular_capacidad_objetiva, calcular_tiempo_chequeo_lognormal
 from .config import PRIO_R1, PRIO_R2PLUS, WEIBULL_CAJAS_PARAMS
 
 class Centro:
@@ -172,16 +172,41 @@ class Centro:
                 yield from self._usar_grua(self.prio_acomodo_v1, dur_a, "acomodo_v1", vuelta, camion_id)
                 primera = False
             
-            # ==================== FASE 2: CHEQUEO (TODOS) ====================
+            
+            # ==================== FASE 2: CHEQUEO CON MUESTRA ÚNICA LOGNORMAL ====================
+            num_pallets_total = len(pallets_asignados)
+            
+            # *** GENERAR UNA NUEVA MUESTRA LOGNORMAL PARA ESTE CAMIÓN ESPECÍFICO ***
+            tiempo_chequeo_total, tasa_chequeo_promedio = calcular_tiempo_chequeo_lognormal(num_pallets_total, self.rng)
+            
+            # Crear identificador único para debugging
+            muestra_id = f"C{camion_id}_T{self.env.now:.1f}"
+            
+            print(f"[CHEQUEO NOCHE] Camión {camion_id}: {num_pallets_total} pallets, "
+                  f"tasa: {tasa_chequeo_promedio:.2f} p/min, tiempo: {tiempo_chequeo_total:.1f} min "
+                  f"[ID: {muestra_id}]")
+            
+            # *** CHEQUEO SIN INTERFERENCIA DEL ALMUERZO ***
+            with self.cheq.request() as c:
+                print(f"[CHEQUEO] Camión {camion_id}: Chequeador obtenido (ocupados: {self.cheq.count}, cola: {len(self.cheq.queue)})")
+                yield c
+                
+                # *** CHEQUEO NORMAL SIN AJUSTES POR ALMUERZO ***
+                inicio_chequeo = self.env.now
+                yield self.env.timeout(tiempo_chequeo_total)
+                fin_chequeo = self.env.now
+                
+                print(f"[CHEQUEO] Camión {camion_id}: Chequeo completado ({inicio_chequeo:.1f} -> {fin_chequeo:.1f})")
+                print(f"[CHEQUEO] Estado recursos: Chequeador liberado (ocupados: {self.cheq.count}, cola: {len(self.cheq.queue)})")
+            
+            # Determinar defectos
             pallets_con_defecto = []
             for i, pal in enumerate(pallets_asignados):
-                with self.cheq.request() as c:
-                    yield c
-                    t_chequeo_range = cfg["t_chequeo_pallet"]
-                    yield self.env.timeout(U_rng(self.rng, t_chequeo_range[0], t_chequeo_range[1]))
-                    
-                    if self.rng.random() < cfg["p_defecto"]:
-                        pallets_con_defecto.append((i, pal))
+                probabilidad_defecto = self.rng.random()
+                if probabilidad_defecto < cfg["p_defecto"]:
+                    pallets_con_defecto.append((i, pal))
+            
+                
             
             # Correcciones
             corregidos = len(pallets_con_defecto)
@@ -189,10 +214,11 @@ class Centro:
                 t_corr_range = cfg["t_correccion"]
                 dur_corr = U_rng(self.rng, t_corr_range[0], t_corr_range[1])
                 yield from self._usar_grua(PRIO_R1, dur_corr, "correccion", vuelta, camion_id)
-                # Re-chequeo
+                # Re-chequeo con distribución lognormal (para 1 pallet)
+                tiempo_rechequeo, _ = calcular_tiempo_chequeo_lognormal(1, self.rng)
                 with self.cheq.request() as c:
                     yield c
-                    yield self.env.timeout(U_rng(self.rng, t_chequeo_range[0], t_chequeo_range[1]))
+                    yield self.env.timeout(tiempo_rechequeo)
             
             pallets_chequeados = pallets_asignados  # Todos ya chequeados
             cajas_totales = sum(p["cajas"] for p in pallets_chequeados)
@@ -284,34 +310,43 @@ class Centro:
                 dur_dc = U_rng(self.rng, t_desp_range[0], t_desp_range[1])
                 yield from self._usar_grua(PRIO_R2PLUS, dur_dc, "despacho_completo_v2", vuelta, camion_id)
 
+    
     def _manejar_salto_almuerzo(self):
-        """Maneja el salto automático de tiempo durante el almuerzo"""
+        """
+        Manejo SIMPLIFICADO del salto de almuerzo SIN manipular recursos internos
+        """
         cfg = self.cfg
         almuerzo_inicio = cfg.get("almuerzo_inicio_min", 120)    # 2:00 AM
-        almuerzo_fin = cfg.get("almuerzo_fin_min", 150)         # 2:30 AM  
-        tiempo_salto = cfg.get("almuerzo_salto_min", 180)       # 3:00 AM (destino del salto)
+        tiempo_salto = cfg.get("almuerzo_salto_min", 150)       # 3:00 AM (destino final)
         
         # Esperar hasta las 2:00 AM
         yield self.env.timeout(almuerzo_inicio)
+
+        print(f"[ALMUERZO {hhmm_dias(almuerzo_inicio)}] 🍽️  PAUSA INICIADA")
         
-        print(f"[ALMUERZO {hhmm_dias(almuerzo_inicio)}] 🍽️  PAUSA INICIADA - Operaciones suspendidas hasta las 3:00 AM")
+        # *** MARCAR INICIO DEL ALMUERZO ***
+        self.pausa_almuerzo_activa = True
+        self.tiempo_inicio_almuerzo = self.env.now
         
-        # Marcar pausa activa
-        self.pausa_activa = True
-        self.tiempo_pre_pausa = self.env.now
+        print(f"[ALMUERZO DEBUG] Estado recursos ANTES del salto:")
+        print(f"   Chequeadores ocupados: {self.cheq.count}/{self.cheq.capacity}")
+        print(f"   Chequeadores en cola: {len(self.cheq.queue)}")
         
-        # Esperar hasta las 2:30 AM
-        yield self.env.timeout(almuerzo_fin - almuerzo_inicio)  # 30 minutos
+        # *** SALTO DIRECTO A LAS 3:00 AM ***
+        tiempo_salto_necesario = tiempo_salto - self.env.now  # 180 - 120 = 60 min
         
-        # *** SALTO DE TIEMPO: De 2:30 AM directo a 3:00 AM ***
-        tiempo_actual = self.env.now  # Debería ser 150 (2:30 AM)
-        tiempo_salto_necesario = tiempo_salto - tiempo_actual  # 180 - 150 = 30 min
+        print(f"[ALMUERZO {hhmm_dias(self.env.now)}] ⏭️  SALTANDO {tiempo_salto_necesario} minutos")
         
-        print(f"[ALMUERZO {hhmm_dias(tiempo_actual)}] ⏭️  SALTANDO TIEMPO - De 2:30 AM a 3:00 AM (+{tiempo_salto_necesario} min)")
-        
-        # Realizar el salto
+        # Realizar el salto SIN tocar recursos internos
         yield self.env.timeout(tiempo_salto_necesario)
         
-        self.pausa_activa = False
+        # *** MARCAR FIN DEL ALMUERZO ***
+        self.pausa_almuerzo_activa = False
+        self.tiempo_fin_almuerzo = self.env.now
+        
+        print(f"[ALMUERZO DEBUG] Estado recursos DESPUÉS del salto:")
+        print(f"   Tiempo actual: {hhmm_dias(self.env.now)}")
+        print(f"   Chequeadores ocupados: {self.cheq.count}/{self.cheq.capacity}")
+        print(f"   Chequeadores en cola: {len(self.cheq.queue)}")
         
         print(f"[ALMUERZO {hhmm_dias(self.env.now)}] ✅ OPERACIONES REANUDADAS - Trabajadores de vuelta")

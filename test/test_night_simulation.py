@@ -27,8 +27,8 @@ def main():
     print(f"{'='*80}\n")
     
     # Parámetros de la simulación
-    total_cajas_facturadas = 30000
-    cajas_para_pick = 26000
+    total_cajas_facturadas = 14680
+    cajas_para_pick = 13583
     seed = 42  # Para reproducibilidad
     
     print(f"📋 PARÁMETROS DE ENTRADA:")
@@ -71,8 +71,8 @@ def main():
     print(f"   • Mixtos: {pallets['pallets_mixtos']}")
     print(f"   • Completos: {pallets['pallets_completos']}")
     
-    print(f"\nPlanificación:")
-    print(f"   • Vueltas: {resultado['vueltas']}")
+   # print(f"\nPlanificación:")
+    #print(f"   • Vueltas: {resultado['vueltas']}")
     
     # 2. TIEMPOS DEL TURNO
     print(f"\n⏰ TIEMPOS DEL TURNO")
@@ -152,46 +152,46 @@ def main():
             print(f"Camiones en esta vuelta: {len(camiones)}")
 
              # Encabezados de tabla
-            #print(f"\n{'ID':>3} │ {'Pallets':>8} │ {'Cajas':>8} │ {'Mix/Comp':>8} │ {'Fusión':>7} │ {'Tiempo':>8}")
-            #print(f"{'───':>3}─┼─{'────────':>8}─┼─{'────────':>8}─┼─{'────────':>8}─┼─{'───────':>7}─┼─{'────────':>8}")
+            print(f"\n{'ID':>3} │ {'Pallets':>8} │ {'Cajas':>8} │ {'Mix/Comp':>8} │ {'Fusión':>7} │ {'Tiempo':>8}")
+            print(f"{'───':>3}─┼─{'────────':>8}─┼─{'────────':>8}─┼─{'────────':>8}─┼─{'───────':>7}─┼─{'────────':>8}")
+          
+            total_pallets_vuelta = 0
+            total_cajas_vuelta = 0
+            total_fusionados_vuelta = 0
             
-           # total_pallets_vuelta = 0
-           # total_cajas_vuelta = 0
-           # total_fusionados_vuelta = 0
-            
-           # for camion in sorted(camiones, key=lambda x: x['camion']):
-           #     id_cam = camion['camion']
-           #     pre_pallets = camion['pre_asignados']
-           #     post_pallets = camion.get('post_cargados', pre_pallets)
-           #     cajas_total = camion['cajas_pre']
-           #     fusionados = camion.get('fusionados', 0)
-           #     tiempo_min = camion['tiempo_min']
+            for camion in sorted(camiones, key=lambda x: x['camion_id']):
+                id_cam = camion['camion_id']
+                pre_pallets = camion['pre_asignados']
+                post_pallets = camion.get('post_cargados', pre_pallets)
+                cajas_total = camion['cajas_pre']
+                fusionados = camion.get('fusionados', 0)
+                tiempo_min = camion['tiempo_min']
                 
                 # Determinar tipo predominante
-             #   cajas_mixto = camion.get('cajas_pick_mixto', 0)
-           #     cajas_completo = cajas_total - cajas_mixto
-            #    tipo = f"{cajas_mixto}M/{cajas_completo}C"
+                cajas_mixto = camion.get('cajas_pick_mixto', 0)
+                cajas_completo = cajas_total - cajas_mixto
+                tipo = f"{cajas_mixto}M/{cajas_completo}C"
                 
                 # Para vuelta 1, mostrar fusionados
-            #    if vuelta == 1:
-          #          fusion_info = f"{fusionados:>3}"
-           #     else:
-            #        fusion_info = "─"
+                if vuelta == 1:
+                     fusion_info = f"{fusionados:>3}"
+                else:
+                     fusion_info = "─"
                 
-         #       print(f"{id_cam:>3} │ {pre_pallets:>3}→{post_pallets:>3} │ {cajas_total:>8,} │ {tipo:>8} │ {fusion_info:>7} │ {tiempo_min:>6.1f}m")
+                print(f"{id_cam:>3} │ {pre_pallets:>3}→{post_pallets:>3} │ {cajas_total:>8,} │ {tipo:>8} │ {fusion_info:>7} │ {tiempo_min:>6.1f}m")
                 
-          #      total_pallets_vuelta += post_pallets
-          #      total_cajas_vuelta += cajas_total
-          #      total_fusionados_vuelta += fusionados
-          #      total_camiones += 1
+                total_pallets_vuelta += post_pallets
+                total_cajas_vuelta += cajas_total
+                total_fusionados_vuelta += fusionados
+                total_camiones += 1
             
             # Totales por vuelta
-          #  print(f"{'───':>3}─┼─{'────────':>8}─┼─{'────────':>8}─┼─{'────────':>8}─┼─{'───────':>7}─┼─{'────────':>8}")
-          #  fusion_total = f"{total_fusionados_vuelta}" if vuelta == 1 else "─"
-          #  print(f"{'TOT':>3} │ {total_pallets_vuelta:>8} │ {total_cajas_vuelta:>8,} │ {'':>8} │ {fusion_total:>7} │ {'':>8}")
+            print(f"{'───':>3}─┼─{'────────':>8}─┼─{'────────':>8}─┼─{'────────':>8}─┼─{'───────':>7}─┼─{'────────':>8}")
+            fusion_total = f"{total_fusionados_vuelta}" if vuelta == 1 else "─"
+            print(f"{'TOT':>3} │ {total_pallets_vuelta:>8} │ {total_cajas_vuelta:>8,} │ {'':>8} │ {fusion_total:>7} │ {'':>8}")
             
-            #total_pallets_todos += total_pallets_vuelta
-            #total_cajas_todas += total_cajas_vuelta
+            total_pallets_todos += total_pallets_vuelta
+            total_cajas_todas += total_cajas_vuelta
             
              # Estadísticas de la vuelta
             #if len(camiones) > 0:
