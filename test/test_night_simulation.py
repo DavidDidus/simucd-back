@@ -415,7 +415,8 @@ def main():
     
     #if ice['valor'] and ice['valor'] < 60:
     #    print(f"💡 ICE bajo - Revisar eficiencia de picking")
-    
+
+   
     print(f"\n{'='*80}")
     print(f"🎉 ANÁLISIS COMPLETO TERMINADO")
     print(f"Tiempo total de ejecución: {tiempo_ejecucion:.2f} segundos")

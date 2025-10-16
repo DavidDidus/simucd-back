@@ -26,7 +26,7 @@ DEFAULT_CONFIG = {
     # Recursos
     "cap_picker": 14,
     "cap_gruero": 4,
-    "cap_chequeador": 4,
+    "cap_chequeador": 2,
     "cap_parrillero": 1,
     "cap_movilizador": 1,
 
