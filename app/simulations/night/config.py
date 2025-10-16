@@ -10,7 +10,7 @@ DEFAULT_CONFIG = {
     "cajas_completo": (40, 90),
 
     # Plan vs carga real
-    "target_pallets_por_vuelta": (12,22), 
+    "target_pallets_por_vuelta": (12,18), 
     "capacidad_pallets_camion": (10,16),  
 
     # Calidad (chequeo solo en 1ª vuelta)
@@ -25,8 +25,8 @@ DEFAULT_CONFIG = {
 
     # Recursos
     "cap_picker": 14,
-    "cap_gruero": 4,                 # grúa única lógica con capacidad 4 (sin roles)
-    "cap_chequeador": 2,
+    "cap_gruero": 4,
+    "cap_chequeador": 4,
     "cap_parrillero": 1,
     "cap_movilizador": 1,
 

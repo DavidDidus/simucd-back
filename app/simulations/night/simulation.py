@@ -4,6 +4,7 @@ from .utils import make_rng, hhmm_dias
 from .generators import generar_pallets_desde_cajas_dobles, construir_plan_desde_pallets
 from .resources import Centro
 from .metrics import _resumir_grua, calcular_resumen_vueltas, calcular_ice_mixto
+from .app.simulations.recomendations import generar_recomendaciones
 
 def generar_json_vueltas_camiones(plan, centro):
     """Genera JSON con número de vuelta, camiones y cajas asignadas"""
@@ -217,7 +218,7 @@ def simular_turno_prioridad_rng(total_cajas_facturadas, cajas_para_pick, cfg, se
     # *** GENERAR ESTADO INICIAL PARA EL DÍA ***
     estado_inicial_dia = generar_estado_inicial_dia(plan, centro)
 
-    resultado_base = {
+    resultado = {
         "entradas_cajas": {
             "total_cajas_facturadas": int(total_cajas_facturadas),
             "cajas_para_pick": int(min(cajas_para_pick, total_cajas_facturadas)),
@@ -237,12 +238,61 @@ def simular_turno_prioridad_rng(total_cajas_facturadas, cajas_para_pick, cfg, se
         "grua_operaciones": centro.grua_ops,
         "planificacion_detalle": plan,
         "pick_gates": pick_gate,
-        
         # *** INFORMACIÓN PARA EL TURNO DEL DÍA ***
         "estado_inicial_dia": estado_inicial_dia
     }
 
     # *** COMBINAR CON JSON DE VUELTAS Y CAMIONES ***
-    resultado_base.update(vueltas_camiones_json)
+    resultado.update(vueltas_camiones_json)
 
-    return resultado_base
+    # 🆕 MÉTRICAS DE CHEQUEADORES
+    metricas_cheq = centro.metricas_chequeadores
+    duracion_turno_min = total_fin
+    resultado["chequeadores"] = {
+        "overall": {
+            "operaciones_totales": metricas_cheq['operaciones_totales'],
+            "pallets_chequeados": metricas_cheq['pallets_chequeados'],
+            "tiempo_total_activo_min": metricas_cheq['tiempo_total_activo'],
+            "tiempo_total_espera_min": metricas_cheq['tiempo_total_espera'],
+            "tiempo_promedio_por_pallet_min": (
+                metricas_cheq['tiempo_total_activo'] / metricas_cheq['pallets_chequeados']
+                if metricas_cheq['pallets_chequeados'] > 0 else 0
+            ),
+            "espera_promedio_por_operacion_min": (
+                metricas_cheq['tiempo_total_espera'] / metricas_cheq['operaciones_totales']
+                if metricas_cheq['operaciones_totales'] > 0 else 0
+            ),
+            "utilizacion_prom": (
+                metricas_cheq['tiempo_total_activo'] / (duracion_turno_min * cfg["cap_chequeador"])
+                if duracion_turno_min > 0 else 0
+            ),
+            "tasa_pallets_por_min": (
+                metricas_cheq['pallets_chequeados'] / metricas_cheq['tiempo_total_activo']
+                if metricas_cheq['tiempo_total_activo'] > 0 else 0
+            )
+        },
+        "por_vuelta": [
+            {
+                "vuelta": vuelta,
+                "operaciones": stats['operaciones'],
+                "pallets": stats['pallets'],
+                "tiempo_activo_min": stats['tiempo_activo'],
+                "tiempo_espera_min": stats['tiempo_espera'],
+                "espera_promedio_min": (
+                    stats['tiempo_espera'] / stats['operaciones']
+                    if stats['operaciones'] > 0 else 0
+                ),
+                "tasa_pallets_por_min": (
+                    stats['pallets'] / stats['tiempo_activo']
+                    if stats['tiempo_activo'] > 0 else 0
+                )
+            }
+            for vuelta, stats in sorted(metricas_cheq['por_vuelta'].items())
+        ],
+        "por_camion": metricas_cheq['por_camion']
+    }
+    
+    # 🆕 Log detallado de chequeos
+    resultado["chequeos_detallados"] = centro.tiempos_chequeo_detallados
+
+    return resultado

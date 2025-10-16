@@ -62,19 +62,23 @@ def sample_chisquared_prep_mixto(rng, df, gamma):
     print(f"   Tiempo prep mixto (Chi-cuadrado): {tiempo_prep:.2f} min")
     return tiempo_prep
 
-def calcular_tiempo_chequeo_lognormal(num_pallets, rng):
+
+
+def sample_tiempo_chequeo_unitario(rng):
     """
-    Calcula tiempo de chequeo basado en UNA NUEVA muestra lognormal
+    Muestrea el tiempo de chequeo para UN SOLO pallet
+    
+    Args:
+        rng: Generador de números aleatorios numpy
+    
+    Returns:
+        float: Tiempo de chequeo en minutos para un pallet
     """
-    if num_pallets <= 0:
-        return 0, 0
+    pallets_por_min = sample_pallets_chequeados_por_minuto(rng)
+    tiempo_por_pallet = 1.0 / pallets_por_min if pallets_por_min > 0 else 1.0
     
-    # Calcular tiempo individual para cada pallet y sumarlos
-    tiempos_pallets = [1.0 / sample_pallets_chequeados_por_minuto(rng) for _ in range(num_pallets)]
-    tiempo_chequeo = sum(tiempos_pallets)
-    
-    # Para referencia, devolver también el último pallets_por_minuto generado
-    return tiempo_chequeo, tiempos_pallets[-1] if tiempos_pallets else 0
+    # Límites de seguridad (0.3 a 3 min por pallet)
+    return max(0.3, min(tiempo_por_pallet, 1))
 
 def sample_tiempo_carga_pallet(rng):
     """
