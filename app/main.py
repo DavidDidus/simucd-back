@@ -1,37 +1,21 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .api.simulation_api import router as simulation_router
+from app.api import simulation_api
 
-app = FastAPI(
-    title="SimuCD - Simulador Centro de Distribución",
-    description="API para simulación de operaciones del Centro de Distribución",
-    version="1.0.0"
-)
+app = FastAPI(title="SimuCD Backend", version="1.0.0")
 
+# Configurar CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173"],  # Ajusta según tu frontend
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Incluir router de simulación
-app.include_router(simulation_router)
+# Incluir routers
+app.include_router(simulation_api.router, prefix="/api", tags=["simulation"])
 
 @app.get("/")
-async def root():
-    return {
-        "message": "SimuCD API - Gemelo Digital Centro de Distribución",
-        "version": "1.0.0",
-        "endpoints": {
-            "simulate": "/cd-operations/simulate",
-            "status": "/cd-operations/status",
-            "docs": "/docs",
-            "health": "/health"
-        }
-    }
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy", "service": "simucd-api"}
+def read_root():
+    return {"message": "SimuCD Backend API"}
