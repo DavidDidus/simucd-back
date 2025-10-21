@@ -52,6 +52,32 @@ class Centro:
             })
         }
 
+        self.metricas_recursos = {
+            "pickers": {"tiempo_activo": 0, "operaciones": 0},
+            "chequeadores": {"tiempo_activo": 0, "operaciones": 0},
+            "grueros": {"tiempo_activo": 0, "operaciones": 0},
+            "parrilleros": {"tiempo_activo": 0, "operaciones": 0},
+            "movilizadores": {"tiempo_activo": 0, "operaciones": 0},
+        }
+
+        self.linea_tiempo = []
+
+         # Control de tracking de vueltas
+        self.vuelta_inicio_picking = {}
+        self.vuelta_inicio_operaciones = {}
+
+    def _registrar_hito(self, descripcion, tipo="general", metadata=None):
+        """Registra un hito en la línea de tiempo"""
+        tiempo_actual = self.env.now
+        hito = {
+            "tiempo_min": tiempo_actual,
+            "hora": hhmm_dias(self.cfg["shift_start_min"] + tiempo_actual),
+            "descripcion": descripcion,
+            "tipo": tipo,
+            "metadata": metadata or {}
+        }
+        self.linea_tiempo.append(hito)
+
     # ---- Helpers de recursos -------------------------------------------------
 
     def _usar_grua(self, priority, dur, label, vuelta, id_cam):
@@ -62,6 +88,10 @@ class Centro:
             t_start = self.env.now
             yield self.env.timeout(dur)
             t_end = self.env.now
+        
+        self.metricas_recursos["grueros"]["tiempo_activo"] += dur
+        self.metricas_recursos["grueros"]["operaciones"] += 1
+        
         self.grua_ops.append({
             "vuelta": vuelta, "camion": id_cam, "label": label,
             "wait": wait, "hold": dur, "start": t_start, "end": t_end
@@ -125,9 +155,27 @@ class Centro:
 
         t0 = self.env.now
 
+        # Registrar inicio de operaciones de la vuelta (solo una vez por vuelta)
+        if vuelta not in self.vuelta_inicio_operaciones:
+            self.vuelta_inicio_operaciones[vuelta] = t0
+            self._registrar_hito(
+                f"Inicio operaciones - Vuelta {vuelta}",
+                tipo="operaciones_vuelta",
+                metadata={"vuelta": vuelta, "fase": "inicio"}
+            )
+
         # A) PICK (solo pallets mixtos)
         pick_list = [p for p in pre_asignados if p["mixto"]]
         if pick_list:
+             # Registrar inicio de picking de la vuelta (solo una vez)
+            if vuelta not in self.vuelta_inicio_picking:
+                self.vuelta_inicio_picking[vuelta] = self.env.now
+                self._registrar_hito(
+                    f"Inicio picking - Vuelta {vuelta}",
+                    tipo="picking_vuelta",
+                    metadata={"vuelta": vuelta, "fase": "inicio"}
+                )
+
             for idx, pal in enumerate(pick_list):
                 with self.pick.request() as r:
                     t_wait_start = self.env.now
@@ -136,6 +184,10 @@ class Centro:
                     tprep = sample_chisquared_prep_mixto(
                         self.rng, CHISQUARED_PREP_MIXTO["df"], CHISQUARED_PREP_MIXTO["scale"]
                     )
+
+                    self.metricas_recursos["pickers"]["tiempo_activo"] += tprep
+                    self.metricas_recursos["pickers"]["operaciones"] += 1
+                    
                     self.tiempos_prep_mixto.append({
                         "vuelta": vuelta, "camion": camion_id,
                         "pallet_idx": idx + 1, "tiempo_prep_min": tprep,
@@ -150,6 +202,16 @@ class Centro:
                 self.pick_gate[vuelta]["done_time"] = self.env.now
                 self.pick_gate[vuelta]["event"].succeed()
 
+                self._registrar_hito(
+                    f"Fin picking - Vuelta {vuelta}",
+                    tipo="picking_vuelta",
+                    metadata={
+                        "vuelta": vuelta,
+                        "fase": "fin",
+                        "camiones_procesados": self.pick_gate[vuelta]["count"]
+                    }
+                )
+
         # B) Post-PICK: V1 (paralelo) o staging (secuencial)
         corregidos = fusionados = 0
         if vuelta == 1:
@@ -159,6 +221,7 @@ class Centro:
 
         # Log por camión
         t1 = self.env.now
+        
         cajas_pick_mixto_camion = sum(p["cajas"] for p in pre_asignados if p["mixto"])
         post_cargados = len(pre_asignados) - fusionados if vuelta == 1 else len(pre_asignados)
 
@@ -200,6 +263,21 @@ class Centro:
             delattr(self, "_capacidades_usadas")
 
         self.eventos.append(evento)
+
+        if self.pick_gate[vuelta]["count"] >= self.pick_gate[vuelta]["target"]:
+            # Buscar el tiempo máximo de fin entre todos los camiones de esta vuelta
+            tiempos_fin_vuelta = [e["fin_min"] for e in self.eventos if e["vuelta"] == vuelta]
+            if len(tiempos_fin_vuelta) == self.pick_gate[vuelta]["target"]:
+                tiempo_fin_max = max(tiempos_fin_vuelta)
+                self._registrar_hito(
+                    f"Fin operaciones - Vuelta {vuelta}",
+                    tipo="operaciones_vuelta",
+                    metadata={
+                        "vuelta": vuelta,
+                        "fase": "fin",
+                        "duracion_total_min": float(tiempo_fin_max - self.vuelta_inicio_operaciones[vuelta])
+                    }
+                )
 
     # -- V1: Acomodo + Chequeo en paralelo + Corrección + Fusión + Carga ------
 
@@ -276,9 +354,23 @@ class Centro:
 
             # cierre: parrillero + movilizador
             with self.parr.request() as p:
-                yield p; yield self.env.timeout(U_rng(self.rng, cfg["t_ajuste_capacidad"][0], cfg["t_ajuste_capacidad"][1]))
+                yield p
+                t_parr_inicio = self.env.now
+                t_parr = U_rng(self.rng, cfg["t_ajuste_capacidad"][0], cfg["t_ajuste_capacidad"][1])
+                yield self.env.timeout(t_parr)
+                
+                # Registrar tiempo activo de parrilleros
+                self.metricas_recursos["parrilleros"]["tiempo_activo"] += t_parr
+                self.metricas_recursos["parrilleros"]["operaciones"] += 1
+            
             with self.movi.request() as m:
-                yield m; yield self.env.timeout(U_rng(self.rng, cfg["t_mover_camion"][0], cfg["t_mover_camion"][1]))
+                yield m
+                t_movi = U_rng(self.rng, cfg["t_mover_camion"][0], cfg["t_mover_camion"][1])
+                yield self.env.timeout(t_movi)
+                
+                # Registrar tiempo activo de movilizadores
+                self.metricas_recursos["movilizadores"]["tiempo_activo"] += t_movi
+                self.metricas_recursos["movilizadores"]["operaciones"] += 1
 
             # snapshot de capacidades usadas (para métricas/analítica)
             self._capacidades_usadas = {

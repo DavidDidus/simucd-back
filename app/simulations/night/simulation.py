@@ -4,7 +4,7 @@ from .rng import make_rng
 from .utils import hhmm_dias
 from .planning import generar_pallets_desde_cajas_dobles, construir_plan_desde_pallets
 from .centro import Centro
-from .metrics import _resumir_grua, calcular_resumen_vueltas, calcular_ice_mixto
+from .metrics import _resumir_grua, calcular_resumen_vueltas, calcular_ice_mixto, calcular_ocupacion_recursos
 from .reporting import generar_json_vueltas_camiones, generar_estado_inicial_dia
 
 def simular_turno_prioridad_rng(total_cajas_facturadas, cajas_para_pick, cfg, seed=None):
@@ -43,6 +43,10 @@ def simular_turno_prioridad_rng(total_cajas_facturadas, cajas_para_pick, cfg, se
     vueltas_camiones_json = generar_json_vueltas_camiones(plan, centro)
     estado_inicial_dia = generar_estado_inicial_dia(plan, centro)
 
+    ocupacion = calcular_ocupacion_recursos(centro, cfg, total_fin)
+
+    linea_tiempo_ordenada = sorted(centro.linea_tiempo, key=lambda e: e["tiempo_min"])
+
     resultado = {
         "entradas_cajas": {
             "total_cajas_facturadas": int(total_cajas_facturadas),
@@ -56,9 +60,11 @@ def simular_turno_prioridad_rng(total_cajas_facturadas, cajas_para_pick, cfg, se
         "turno_fin_nominal": hhmm_dias(cfg["shift_end_min"]),
         "turno_fin_real": hhmm_dias(cfg["shift_start_min"] + total_fin),
         "overrun_total_min": max(0, total_fin - cfg["shift_end_min"]),
+        "timeline": linea_tiempo_ordenada,
         "resumen_vueltas": resumen_por_vuelta,
         "grua": grua_metrics,
         "ice_mixto": ice_mixto,
+        "ocupacion_recursos": ocupacion,
         "centro_eventos": centro.eventos,
         "grua_operaciones": centro.grua_ops,
         "planificacion_detalle": plan,

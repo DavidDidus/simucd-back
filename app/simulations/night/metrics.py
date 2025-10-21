@@ -2,6 +2,92 @@
 from collections import defaultdict
 from .utils import hhmm_dias
 
+def calcular_ocupacion_recursos(centro, cfg, tiempo_total_turno):
+    """
+    Calcula el porcentaje de ocupación de cada tipo de recurso.
+    
+    Args:
+        centro: Instancia de Centro con métricas de recursos
+        cfg: Configuración con capacidades
+        tiempo_total_turno: Duración total del turno en minutos
+    
+    Returns:
+        Dict con porcentajes de ocupación por recurso
+    """
+    recursos = {
+        "pickers": {
+            "capacidad": cfg.get("cap_picker", 0),
+            "tiempo_activo": centro.metricas_recursos["pickers"]["tiempo_activo"],
+            "operaciones": centro.metricas_recursos["pickers"]["operaciones"],
+        },
+        "chequeadores": {
+            "capacidad": cfg.get("cap_chequeador", 0),
+            "tiempo_activo": centro.metricas_chequeadores["tiempo_total_activo"],
+            "operaciones": centro.metricas_chequeadores["operaciones_totales"],
+        },
+        "grueros": {
+            "capacidad": cfg.get("cap_gruero", 0),
+            "tiempo_activo": sum(op["hold"] for op in centro.grua_ops),
+            "operaciones": len(centro.grua_ops),
+        },
+        "parrilleros": {
+            "capacidad": cfg.get("cap_parrillero", 0),
+            "tiempo_activo": centro.metricas_recursos["parrilleros"]["tiempo_activo"],
+            "operaciones": centro.metricas_recursos["parrilleros"]["operaciones"],
+        },
+        "movilizadores": {
+            "capacidad": cfg.get("cap_movilizador", 0),
+            "tiempo_activo": centro.metricas_recursos["movilizadores"]["tiempo_activo"],
+            "operaciones": centro.metricas_recursos["movilizadores"]["operaciones"],
+        },
+    }
+    
+    ocupacion = {}
+    for nombre, datos in recursos.items():
+        capacidad = datos["capacidad"]
+        tiempo_activo = datos["tiempo_activo"]
+        operaciones = datos["operaciones"]
+        
+        # Tiempo total disponible = capacidad * duración del turno
+        tiempo_total_disponible = capacidad * tiempo_total_turno
+        
+        # Porcentaje de ocupación
+        porcentaje_ocupacion = (tiempo_activo / tiempo_total_disponible * 100) if tiempo_total_disponible > 0 else 0
+        
+        # Tiempo promedio por operación
+        tiempo_promedio_operacion = (tiempo_activo / operaciones) if operaciones > 0 else 0
+        
+        ocupacion[nombre] = {
+            "capacidad_recursos": capacidad,
+            "tiempo_total_disponible_min": tiempo_total_disponible,
+            "tiempo_activo_total_min": tiempo_activo,
+            "tiempo_inactivo_total_min": max(0, tiempo_total_disponible - tiempo_activo),
+            "porcentaje_ocupacion": round(porcentaje_ocupacion, 2),
+            "operaciones_totales": operaciones,
+            "tiempo_promedio_por_operacion_min": round(tiempo_promedio_operacion, 2),
+            "operaciones_por_recurso": round(operaciones / capacidad, 2) if capacidad > 0 else 0,
+        }
+    
+    # Resumen general
+    ocupacion["resumen"] = {
+        "promedio_ocupacion_general": round(
+            sum(r["porcentaje_ocupacion"] for r in ocupacion.values() if isinstance(r, dict) and "porcentaje_ocupacion" in r) / len(recursos), 
+            2
+        ),
+        "recursos_mas_utilizados": sorted(
+            [(k, v["porcentaje_ocupacion"]) for k, v in ocupacion.items() if isinstance(v, dict) and "porcentaje_ocupacion" in v],
+            key=lambda x: x[1],
+            reverse=True
+        ),
+        "cuellos_de_botella": [
+            k for k, v in ocupacion.items() 
+            if isinstance(v, dict) and v.get("porcentaje_ocupacion", 0) > 85
+        ],
+    }
+    
+    return ocupacion
+
+
 def _resumir_grua(centro, cfg, total_fin):
     ops = centro.grua_ops
     by_vuelta = defaultdict(list)
