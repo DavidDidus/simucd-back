@@ -1,33 +1,28 @@
-# app/simulations/day/config.py
-"""
-Configuraciones específicas para el turno del día
-"""
-
-# Configuración base para el día
 DAY_CONFIG = {
-    # Tiempos de operación
-    "shift_start_min": 480,      # 8:00 AM
-    "shift_end_min": 1440,       # 12:00 AM (medianoche)
-    
-    # Tiempos de carga (más rápidos que la noche)
-    "tiempo_carga_dia_min": [1, 4],  # minutos por pallet
-    
-    # Recursos
-    "cap_gruero": 6,             # Más capacidad de grúa durante el día
-    
-    # Retornos de camiones
-    "tiempo_base_retorno_min": 60,    # 1 hora después del inicio (9:00 AM)
-    "intervalo_retorno_min": 30,      # 30 minutos entre retornos
-    
-    # Distribuciones de tiempo (para futuras mejoras)
-    "distribucion_retorno": "uniforme",  # uniforme, normal, exponencial
-    "variabilidad_retorno_min": 15,      # ±15 min de variabilidad
-}
+    # --- Recursos (día)
+    "cap_chequeador": 2,
+    "cap_gruero": 4,
+    "cap_parrillero": 1,
+    "cap_movilizador": 2,
+    "cap_patio": 2,
 
-# Configuración combinada (hereda de night + día)
-def get_day_config(night_config):
-    """
-    Combina configuración de la noche con configuración específica del día
-    """
-    combined_config = {**night_config, **DAY_CONFIG}
-    return combined_config
+    # --- Turno (min desde el día 0)
+    "shift_start_min": 480,      # 08:00
+    "shift_end_min": 960,        # +8h -> 16:00 (ajústalo si tu turno es otro)
+
+    # --- Tiempos de operación
+    "tiempo_carga_dia_min": (1.0, 4.0),  # grúa por pallet
+    "t_ajuste_capacidad": (1.5, 3.0),    # parrillero
+    "t_mover_camion": (1.3, 1.4),        # movilizador
+
+    "retorno_weibull": {
+            "alpha": 2.1967,   # también aceptamos "alfa" en utils por si lo prefieres
+            "beta": 343.6,
+            "gamma": 30.126,
+        },
+        
+    # --- Otros
+    "debug": True,
+}
+def get_day_config():
+    return DAY_CONFIG.copy()

@@ -8,7 +8,7 @@ from .utils import hhmm_dias
 from .dists import (
     sample_weibull_cajas, sample_chisquared_prep_mixto,
     sample_tiempo_carga_pallet, sample_tiempo_despacho_completo,
-    sample_tiempo_chequeo_unitario
+    sample_tiempo_chequeo_unitario, sample_lognormal_retorno_camion
 )
 from .config import PRIO_R1, PRIO_R2PLUS, WEIBULL_CAJAS_PARAMS, CHISQUARED_PREP_MIXTO
 
@@ -66,6 +66,42 @@ class Centro:
         self.vuelta_inicio_picking = {}
         self.vuelta_inicio_operaciones = {}
 
+        self.salidas_camiones = []
+        self.salidas_por_camion = {}
+    
+        # --- Helpers para traducir hora absoluta (min desde 00:00) a tiempo env ---
+    def _abs_to_env_min(self, abs_min):
+        """Convierte minutos absolutos del día a minutos del env (0 = inicio de turno)."""
+        return max(0.0, abs_min - self.cfg.get("shift_start_min", 0))
+
+    # --- Proceso: agenda salida aleatoria desde 06:00 hasta fin de turno ------
+    def programar_salida_camion(self, camion_id, vuelta):
+        """
+        Programa la salida desde las 06:00 (o más tarde si el camión quedó listo después)
+        en un instante aleatorio uniforme dentro de [t_inicio, fin_turno].
+        """
+        # Ventana absoluta de inicio (06:00 = 360 min desde las 00:00)
+        abs_inicio = self.cfg.get("salidas_inicio_abs_min", 360)  # 06:00
+        env_inicio = self._abs_to_env_min(abs_inicio)
+
+        now = self.env.now
+        shift_end = self.cfg.get("shift_end_min", now)  # fin de turno relativo al env
+
+        # El inicio de ventana es lo máximo entre: 06:00 (en minutos env) y "ya"
+        t0 = max(env_inicio, now)
+        # Si ya pasó el fin de turno, no demores (sale ya)
+        if shift_end <= t0:
+            t_depart = now
+        else:
+            # Aleatorio uniforme en [t0, shift_end)
+            t_depart = self.rng.uniform(t0, shift_end)
+
+        # Espera hasta el instante programado y luego registra la salida real
+        if t_depart > now:
+            yield self.env.timeout(t_depart - now)
+        self.registrar_salida_camion(camion_id, vuelta)
+
+
     def _registrar_hito(self, descripcion, tipo="general", metadata=None):
         """Registra un hito en la línea de tiempo"""
         tiempo_actual = self.env.now
@@ -104,6 +140,40 @@ class Centro:
             return
         yield ev
         self.prio_acomodo_v1 = PRIO_R2PLUS
+
+    def registrar_salida_camion(self, camion_id, vuelta):
+        """
+        Se invoca apenas el movilizador termina de mover el camión (no bloquea el patio).
+        Registra hora de salida y retorno estimado según la distribución provista.
+        """
+        t_salida = self.env.now
+        dur_ruta = sample_lognormal_retorno_camion(self.rng)  # minutos
+        t_retorno = t_salida + dur_ruta
+
+        data = {
+            "camion_id": camion_id,
+            "vuelta_origen": vuelta,
+            "salida_min": float(t_salida),
+            "salida_hhmm": hhmm_dias(self.cfg["shift_start_min"] + t_salida),
+            "retorno_est_min": float(t_retorno),
+            "retorno_est_hhmm": hhmm_dias(self.cfg["shift_start_min"] + t_retorno),
+            "duracion_ruta_est_min": float(dur_ruta),
+        }
+        print("Salida camión:", data["camion_id"], data["salida_hhmm"], "Retorno estimado:", data["retorno_est_hhmm"])
+        self.salidas_camiones.append(data)
+        self.salidas_por_camion[camion_id] = data
+
+        self._registrar_hito(
+            f"Salida a ruta - Camión {camion_id} (Vuelta {vuelta})",
+            tipo="salida_camion",
+            metadata={
+                "camion_id": camion_id,
+                "vuelta": vuelta,
+                "salida_min": float(t_salida),
+                "retorno_est_min": float(t_retorno),
+                "duracion_min": float(dur_ruta),
+            }
+        )
 
     # ---- Chequeo por pallet --------------------------------------------------
 
@@ -284,7 +354,6 @@ class Centro:
     def _procesar_vuelta_1_paralelo(self, vuelta, camion_id, pallets_asignados):
         cfg = self.cfg
         corregidos = 0
-        t_inicio_camion = self.env.now
 
         with self.patio_camiones.request() as slot:
             yield slot
@@ -355,7 +424,6 @@ class Centro:
             # cierre: parrillero + movilizador
             with self.parr.request() as p:
                 yield p
-                t_parr_inicio = self.env.now
                 t_parr = U_rng(self.rng, cfg["t_ajuste_capacidad"][0], cfg["t_ajuste_capacidad"][1])
                 yield self.env.timeout(t_parr)
                 
@@ -371,6 +439,8 @@ class Centro:
                 # Registrar tiempo activo de movilizadores
                 self.metricas_recursos["movilizadores"]["tiempo_activo"] += t_movi
                 self.metricas_recursos["movilizadores"]["operaciones"] += 1
+
+            self.env.process(self.programar_salida_camion(camion_id, vuelta))
 
             # snapshot de capacidades usadas (para métricas/analítica)
             self._capacidades_usadas = {

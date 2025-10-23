@@ -2,7 +2,7 @@
 
 # Configuración exacta de tu simulación
 DEFAULT_CONFIG = {
-    "camiones": 23,
+    "camiones": 20,
     "cap_patio": 16,
 
     # Tamaños de pallet (cajas) por tipo
@@ -21,7 +21,7 @@ DEFAULT_CONFIG = {
     "t_acomodo_otra": (0.4, 0.8),     
     "t_correccion": (1.0, 2.0),       #
     "t_ajuste_capacidad": (1.5, 3.0), #
-    "t_mover_camion": (1.0, 2.0),     #
+    "t_mover_camion": (1.3, 1.4),     #
 
     # Recursos
     "cap_picker": 14,

@@ -55,6 +55,21 @@ def sample_tiempo_despacho_completo(rng):
     )
     return max(0.2, min(muestra + LOGNORMAL_DESPACHO_COMPLETO.get("gamma", 0.0), 2.5))
 
+def sample_dagum_cajas(rng):
+   
+    """
+    Genera muestras de una distribución Dagum.
+    a = parámetro de forma 1
+    p = parámetro de forma 2
+    b = parámetro de escala
+    """
+    a=11.436
+    p=0.17161 
+    b=792.92
+
+    u = np.random.uniform(0, 1)
+    return b * ((u ** (-1/p)) - 1) ** (-1/a)
+
 def sample_weibull_cajas(rng, alpha, beta, gamma):
     u = rng.random()
     u = max(u, 1e-10)
@@ -67,3 +82,11 @@ def sample_chisquared_prep_mixto(rng, df, gamma):
     if t < 0.2: t = 0.2
     if t > 20:  t = 20
     return t
+
+def sample_lognormal_retorno_camion(rng, sigma=0.0232, mu=8.8962, gamma=-6979.4):
+    """
+    Tiempo de retorno del camión (min) ~ LogNormal(mu, sigma) + gamma (desplazado).
+    Ajusta parámetros según tus datos; gamma puede ser negativo.
+    """
+    val = rng.lognormal(mean=mu, sigma=sigma)
+    return max(0.0, val + gamma)
