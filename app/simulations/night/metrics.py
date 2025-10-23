@@ -49,7 +49,7 @@ def calcular_ocupacion_recursos(centro, cfg, tiempo_total_turno):
         operaciones = datos["operaciones"]
         
         # Tiempo total disponible = capacidad * duración del turno
-        tiempo_total_disponible = capacidad * tiempo_total_turno
+        tiempo_total_disponible = capacidad * 480
         
         # Porcentaje de ocupación
         porcentaje_ocupacion = (tiempo_activo / tiempo_total_disponible * 100) if tiempo_total_disponible > 0 else 0
