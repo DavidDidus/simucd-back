@@ -71,6 +71,7 @@ def simular_turno_prioridad_rng(total_cajas_facturadas, cajas_para_pick, cfg, se
         "pick_gates": pick_gate,
         "estado_inicial_dia": estado_inicial_dia,
     }
+    print(resultado["ocupacion_recursos"])
 
     resultado.update(vueltas_camiones_json)
     return resultado

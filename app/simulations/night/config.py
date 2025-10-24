@@ -24,7 +24,7 @@ DEFAULT_CONFIG = {
     "t_mover_camion": (1.3, 1.4),     #
 
     # Recursos
-    "cap_picker": 14,
+    "cap_picker": 16,
     "cap_gruero": 4,
     "cap_chequeador": 2,
     "cap_parrillero": 1,

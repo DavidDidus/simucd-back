@@ -6,6 +6,7 @@ from ..night.utils import hhmm_dias
 from ..night.dists import (
     sample_tiempo_chequeo_unitario,
     sample_tiempo_carga_pallet,
+    sample_lognormal_retorno_camion
 )
 from .config import get_day_config
 from ..night.metrics import calcular_ocupacion_recursos
@@ -180,13 +181,7 @@ class CentroDia:
                 self.metricas_recursos["parrilleros"]["tiempo_activo"] += t_parr
                 self.metricas_recursos["parrilleros"]["operaciones"] += 1
 
-            # Movilización y salida a ruta (control explícito de salida)
-            with self.movi.request() as m:
-                yield m
-                t_movi = U_rng(self.rng, *cfg.get("t_mover_camion", (1.3, 1.4)))
-                yield self.env.timeout(t_movi)
-                self.metricas_recursos["movilizadores"]["tiempo_activo"] += t_movi
-                self.metricas_recursos["movilizadores"]["operaciones"] += 1
+           
 
             t1 = self.env.now
             # Evento operativo (camión en patio)
@@ -308,7 +303,7 @@ class CentroDia:
         # 3) Proceso por camión que itera sus vueltas (>=2)
         def camion_runner(camion_id, lotes, offset_idx):
             # Llegada inicial para la PRIMERA vuelta (>=2)
-            base_travel_min = calcular_tiempo_retorno(offset_idx, self.cfg, self.rng)
+            base_travel_min = sample_lognormal_retorno_camion(self.rng)
 
             if camion_id in evt_salio_v1:
                 # Espera a que el camión efectivamente salga en V1 dentro del día
@@ -320,6 +315,7 @@ class CentroDia:
             arrive_hhmm = hhmm_dias(self.cfg.get("shift_start_min", 0) + self.env.now + arrive_min)
             self._dbg(f"🛣️ EN RUTA V{lotes[0]['vuelta']}: ETA llegada",
                       camion=camion_id, eta_min=f"{arrive_min:.2f}", eta_hhmm=arrive_hhmm)
+            print(arrive_min / 60)
             yield self.env.timeout(max(0.0, arrive_min))
             self._dbg(f"⬅️  LLEGA camión V{lotes[0]['vuelta']}", camion=camion_id)
 
@@ -337,7 +333,7 @@ class CentroDia:
                 })
 
                 # Viaje y retorno al CD (deja listo para la siguiente vuelta si existe)
-                ret_min = calcular_tiempo_retorno(offset_idx, self.cfg, self.rng)
+                ret_min = sample_lognormal_retorno_camion(self.rng)
                 ret_eta_hhmm = hhmm_dias(self.cfg.get("shift_start_min", 0) + self.env.now + ret_min)
                 self._dbg("🛣️  RETORNA: ETA retorno",
                           camion=camion_id, vuelta=v, eta_min=f"{ret_min:.2f}", eta_hhmm=ret_eta_hhmm)

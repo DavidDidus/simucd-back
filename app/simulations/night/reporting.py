@@ -148,5 +148,4 @@ def generar_estado_inicial_dia(plan, centro):
                     "proximo_vuelta_asignada": None,
                 })
 
-
     return estado

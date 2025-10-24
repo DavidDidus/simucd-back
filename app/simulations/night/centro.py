@@ -163,17 +163,7 @@ class Centro:
         self.salidas_camiones.append(data)
         self.salidas_por_camion[camion_id] = data
 
-        self._registrar_hito(
-            f"Salida a ruta - Camión {camion_id} (Vuelta {vuelta})",
-            tipo="salida_camion",
-            metadata={
-                "camion_id": camion_id,
-                "vuelta": vuelta,
-                "salida_min": float(t_salida),
-                "retorno_est_min": float(t_retorno),
-                "duracion_min": float(dur_ruta),
-            }
-        )
+        
 
     # ---- Chequeo por pallet --------------------------------------------------
 
