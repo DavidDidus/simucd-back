@@ -12,7 +12,7 @@ def test_ciclo_completo():
     resultado = simular_ciclo_completo_24h(
         total_cajas_facturadas=20000,
         cajas_para_pick=19000,
-        seed=5,
+        seed=None,
     )
 
     noche, dia = resultado["turno_noche"], resultado["turno_dia"]
@@ -46,6 +46,8 @@ def test_ciclo_completo():
 
     # --- Diagnóstico rápido de cuello de botella
     print("\n🔎 Diagnóstico:", diagnostico_bottleneck(dia))
+
+    
 
 if __name__ == "__main__":
     test_ciclo_completo()
