@@ -1,18 +1,32 @@
 # app/simulations/day/config.py
 
 DAY_CONFIG = {
-    # --- Recursos (día)
-    "cap_chequeador": 2,
-    "cap_gruero": 4,
-    "cap_parrillero": 1,
-    "cap_movilizador": 2,
-    "cap_patio": 2,
-    "cap_porteria": 1,   # personal de portería para T1 (Hito 0)
-
-    # --- Turno (min desde 00:00)
-    "shift_start_min": 480,      # 08:00
-    "shift_end_min": 960,        # 16:00
-
+    "shift_start_min": 480,     # 08:00
+    "shift_end_min": 1440,      # 24:00 (00:00)
+    # Turnos del día (solo cambia dotación)
+    "shifts_day": [{
+        "start": "08:00", 
+        "end": "16:00",
+        "caps": {
+            "grua": 4, 
+            "chequeador": 2, 
+            "parrillero": 1, 
+            "movilizador": 1, 
+            "porteria": 1
+            }
+        },
+    {
+        "start": "16:00", 
+        "end": "24:00",
+        "caps": {
+            "grua": 2, 
+            "chequeador": 1, 
+            "parrillero": 1, 
+            "movilizador": 1, 
+            "porteria": 1
+        }
+    },],
+    
     # --- Tiempos de operación (día)
     "tiempo_carga_dia_min": (1.0, 4.0),  # grúa por pallet
     "t_ajuste_capacidad": (1.5, 3.0),    # parrillero

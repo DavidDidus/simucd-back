@@ -44,6 +44,12 @@ class CentroDia:
         # Logs/Métricas
         self.eventos = []
         self.grua_ops = []
+        self.cheq_ops = []
+        self.parr_ops = []
+        self.movi_ops = []
+        self.port_ops = []
+        self.pick_ops = []
+
         self.t1_eventos = []
         self.t1_contador = 0
         self.metricas_chequeadores = {
@@ -60,6 +66,30 @@ class CentroDia:
             "porteros": {"tiempo_activo": 0, "operaciones": 0},
         }
         self.linea_tiempo = []
+
+    def _abs_min(self, hhmm_or_int):
+        """Convierte 'HH:MM' o int a minutos absolutos [0..1440)."""
+        if isinstance(hhmm_or_int, (int, float)):
+            return int(hhmm_or_int)
+        h, m = map(int, str(hhmm_or_int).split(":"))
+        return h * 60 + m
+
+    def _aplicar_capacidades(self, caps: dict):
+        """Actualiza la dotación (capacity) de recursos según 'caps'."""
+        if "grua" in caps:        self.grua._capacity = int(caps["grua"])
+        if "chequeador" in caps:  self.cheq._capacity = int(caps["chequeador"])
+        if "parrillero" in caps:  self.parr._capacity = int(caps["parrillero"])
+        if "movilizador" in caps: self.movi._capacity = int(caps["movilizador"])
+        if "porteria" in caps:    self.porteria._capacity = int(caps["porteria"])
+
+        # Debug del cambio
+        self._dbg("🔁 Cambio de turno aplicado",
+                grua=self.grua._capacity,
+                chequeador=self.cheq._capacity,
+                parrillero=self.parr._capacity,
+                movilizador=self.movi._capacity,
+                porteria=self.porteria._capacity)
+
 
     # ---- Helpers patio equivalente (con DEBUG) ----
     def _patio_eq_get(self, k: int, quien: str):
@@ -87,6 +117,39 @@ class CentroDia:
                 espera_min=round(wait, 2),
                 libres=f"{libres_despues}/{cap}",
                 ocupacion_eq=ocupacion)
+
+    def _gestor_turnos(self):
+        """
+        Aplica cambios de capacidad en los hitos de inicio de turno.
+        Lee cfg['shifts_day'] con 'start'/'end' y 'caps'.
+        """
+        shifts = list(self.cfg.get("shifts_day") or [])
+        if not shifts:
+            return
+
+        base_abs = self.cfg.get("shift_start_min", 0)
+
+        # Ordenar por hora de inicio
+        sched = []
+        for sh in shifts:
+            t_start_abs = self._abs_min(sh.get("start", base_abs))
+            caps = sh.get("caps", {})
+            sched.append((t_start_abs, caps))
+        sched.sort(key=lambda x: x[0])
+
+        # Aplicar inmediatamente el primer turno si coincide con el inicio del día
+        if sched and sched[0][0] == base_abs:
+            self._aplicar_capacidades(sched[0][1])
+
+        # Recorrer cambios (incluye el de las 16:00)
+        for t_abs, caps in sched:
+            t_rel = max(0, t_abs - base_abs)
+            if t_rel > self.env.now:
+                yield self.env.timeout(t_rel - self.env.now)
+            self._registrar("Cambio de turno", "turno", {
+                "desde": f"{t_abs//60:02d}:{t_abs%60:02d}", "caps": caps
+            })
+            self._aplicar_capacidades(caps)
 
     def _patio_eq_put(self, k: int, quien: str):
         """
@@ -210,8 +273,11 @@ class CentroDia:
                 with self.parr.request() as p:
                     yield p
                     t_parr = U_rng(self.rng, *cfg.get("t_ajuste_capacidad", (1.5, 3.0)))
+                    t_parr_start = self.env.now
                     yield self.env.timeout(t_parr)
+                    t_parr_end = self.env.now
                     self.metricas_recursos["parrilleros"]["tiempo_activo"] += t_parr
+                    self.parr_ops.append({"start": t_parr_start, "end": t_parr_end, "hold": t_parr})
                     self.metricas_recursos["parrilleros"]["operaciones"] += 1
 
                 t1 = self.env.now
@@ -252,8 +318,11 @@ class CentroDia:
         with self.porteria.request() as r_port_in:
             yield r_port_in
             d01 = sample_delta_hito0_1(self.rng)
+            t_port_in_start = self.env.now
             yield self.env.timeout(d01)
+            t_port_in_end = self.env.now
             self.metricas_recursos["porteros"]["tiempo_activo"] += d01
+            self.port_ops.append({"start": t_port_in_start, "end": t_port_in_end, "hold": d01, "tipo": "entrada"})
             self.metricas_recursos["porteros"]["operaciones"] += 1
 
         # Reserva patio equivalente (2) desde H1 hasta el FINAL (tras H2→H3)
@@ -265,16 +334,22 @@ class CentroDia:
             with self.cheq.request() as r_chk:
                 yield r_chk
                 d12 = sample_delta_hito1_2(self.rng)
+                t_chk_start = self.env.now
                 yield self.env.timeout(d12)
+                t_chk_end = self.env.now
                 self.metricas_recursos["chequeadores"]["tiempo_activo"] += d12
+                self.cheq_ops.append({"start": t_chk_start, "end": t_chk_end, "hold": d12})
                 self.metricas_recursos["chequeadores"]["operaciones"] += 1
 
             # H2→H3: Portería (salida)
             with self.porteria.request() as r_port_out:
                 yield r_port_out
                 d23 = sample_delta_hito2_3(self.rng)
+                t_port_out_start = self.env.now
                 yield self.env.timeout(d23)
+                t_port_out_end = self.env.now
                 self.metricas_recursos["porteros"]["tiempo_activo"] += d23
+                self.port_ops.append({"start": t_port_out_start, "end": t_port_out_end, "hold": d23, "tipo": "salida"})
                 self.metricas_recursos["porteros"]["operaciones"] += 1
         finally:
             self._patio_eq_put(2, f"T1 {camion_id}")
@@ -338,10 +413,13 @@ class CentroDia:
             self.env.process(self._proceso_camion_T1(cid))
             t_prev = t_abs
 
+
+    
     # --------------------------------- Driver ---------------------------------
     def run(self, asignaciones, seed=None, estado_inicial_dia=None):
         self.rng = make_rng(seed)
         salidas, retornos, salidas_v1_pendientes = [], [], []
+        self.env.process(self._gestor_turnos())
         self.env.process(self._generador_T1())
 
         pendientes_v1 = set()
@@ -367,7 +445,18 @@ class CentroDia:
                 p["_chequed"] = False
                 p["_evt_chk"] = self.env.event()
                 self.queue_chequeo.put((p, a["camion_id"], a.get("vuelta", 2), idx, total))
-        for wid in range(self.cfg.get("cap_chequeador", 2)):
+
+        def _cap_chequeador_max():
+            base = int(self.cfg.get("cap_chequeador", 2))
+            mx = base
+            for sh in (self.cfg.get("shifts_day") or []):
+                try:
+                    mx = max(mx, int(sh.get("caps", {}).get("chequeador", base)))
+                except Exception:
+                    pass
+            return mx
+        
+        for wid in range(_cap_chequeador_max()):
             self.env.process(self._worker_chequeo_global(wid))
 
         # 2) Agrupar lotes por camión
@@ -388,8 +477,11 @@ class CentroDia:
                 with self.movi.request() as m:
                     yield m
                     t_m = U_rng(self.rng, *self.cfg.get("t_mover_camion", (1.3, 1.4)))
+                    t_movi_start = self.env.now
                     yield self.env.timeout(t_m)
+                    t_movi_end = self.env.now
                     self.metricas_recursos["movilizadores"]["tiempo_activo"] += t_m
+                    self.movi_ops.append({"start": t_movi_start, "end": t_movi_end, "hold": t_m})
                     self.metricas_recursos["movilizadores"]["operaciones"] += 1
             ts = self.env.now
             salidas_v1_pendientes.append({"camion_id": cid, "vuelta": 1, "hora_salida": hhmm_dias(self.cfg.get("shift_start_min", 0) + ts)})
