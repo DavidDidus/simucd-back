@@ -5,6 +5,7 @@ from app.simulations.complete_cycle import simular_ciclo_completo_24h
 from app.simulations.analysis_helpers import (
     resumen_kpis_dia, resumen_kpis_noche, diagnostico_bottleneck
 )
+from app.simulations.day.reporting import imprimir_ocupacion_turnos_dia
 
 def test_ciclo_completo():
     # Puedes ajustar dotación del día aquí:
@@ -46,6 +47,15 @@ def test_ciclo_completo():
 
     # --- Diagnóstico rápido de cuello de botella
     print("\n🔎 Diagnóstico:", diagnostico_bottleneck(dia))
+
+    cfg_dia = (
+        dia.get("cfg") or                # si el turno día ya trae su cfg
+        resultado.get("cfg_dia") or      # si el wrapper del ciclo devuelve cfg_dia
+        resultado.get("cfg") or          # último recurso: cfg global
+        {}
+    )
+
+    imprimir_ocupacion_turnos_dia(dia.get("ocupacion_recursos", {}), cfg_dia)
 
     
 
